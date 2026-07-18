@@ -11,7 +11,7 @@ Below is the researcher's complete trace from their Papiers library, fetched via
 Produce PRIOR.md. Rules of the artifact:
 
 1. **It is an index, not a summary.** Every claim you make must carry inline receipts — the full IDs, like `[hl_cebb8f36ac2e633504f90cd78d622c8a]` or `[doc_…]` or `[cnv_…]`. Never truncate IDs: agents resolve them with `papiers read <id>`. A claim without a receipt is worthless.
-2. **Attention is not endorsement.** A bare highlight means "this caught my attention." Only annotations and conversation excerpts carry polarity (agreement, doubt, excitement, dismissal). State beliefs only where the researcher's own words support them; otherwise call it a hunch or an open question. Never fabricate a stance.
+2. **Attention is not endorsement — for beliefs.** A bare highlight means "this caught my attention." Only annotations and conversation excerpts carry polarity (agreement, doubt, excitement, dismissal). State beliefs only where the researcher's own words support them; otherwise call it a hunch or an open question. Never fabricate a stance. EXCEPTION — techniques: for concrete, actionable methods (an optimization trick, a tool, an algorithmic move), the save itself is the speech act — saving it means "candidate move, try this." Techniques need no polarity; they need recency, cluster mass, and source credibility.
 3. **Taste has a derivative.** Use timestamps relative to now. Order threads by recency-weighted activity. Label each thread's momentum: `rising`, `steady`, or `cooling`.
 4. **Be honest about thinness.** State evidence counts per thread. If a thread rests on three highlights, say so.
 5. Length target: 120–220 lines. Dense, specific, quotable. No filler.
@@ -43,6 +43,15 @@ Grounded in the evidence — cite receipts even here.>
 <Only what the evidence supports: things argued against in annotations/conversations,
 directions conspicuously absent given the library's shape, threads that went cold.
 If evidence is thin here, say so in one line rather than inventing.>
+
+## Techniques & promising moves
+<Concrete, actionable techniques the researcher has curated — governed by the technique
+exception to rule 2: the save is the signal. One line per technique: what it is, when to
+reach for it, confidence tier, receipts. Confidence ladder: tried (used in a chat) >
+endorsed (annotated) > saved (bare save/highlight). Rank by recency × cluster mass
+(several saves in one area = a hot cluster) × source credibility. Omit the section
+entirely only if the library contains no actionable technique content.>
+
 
 ## Last 7 days
 <Chronological digest of the freshest activity — this is the section an overnight

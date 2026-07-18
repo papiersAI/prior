@@ -10,7 +10,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PRIOR_PATH = path.join(ROOT, "PRIOR.md");
 const WORKING_PATH = path.join(__dirname, ".prior-working.md");
-const FIXTURE_PATH = path.join(__dirname, "fixtures", "demo-run.jsonl");
+const FIXTURES = {
+  default: path.join(__dirname, "fixtures", "demo-run.jsonl"),
+  kernel: path.join(__dirname, "fixtures", "demo-kernel-run.jsonl"),
+};
 const PORT = 8787;
 const MOCK = process.env.MOCK === "1";
 
@@ -40,8 +43,8 @@ setInterval(() => {
 // ---------------------------------------------------------------- mock playback
 let playback = null; // { events, i, timer, pendingAversion }
 
-function loadFixture() {
-  const raw = fs.readFileSync(FIXTURE_PATH, "utf8");
+function loadFixture(name) {
+  const raw = fs.readFileSync(FIXTURES[name] ?? FIXTURES.default, "utf8");
   const events = [];
   for (const line of raw.split("\n")) {
     const t = line.trim();
@@ -60,11 +63,11 @@ function stopPlayback() {
   playback = null;
 }
 
-function startMockRun(question) {
+function startMockRun(question, fixture) {
   stopPlayback();
   let events;
   try {
-    events = loadFixture(); // re-read each run so fixture edits need no restart
+    events = loadFixture(fixture); // re-read each run so fixture edits need no restart
   } catch (e) {
     broadcast({ t: "status", run: "system", text: `fixture missing: ${e.message}` });
     return;
@@ -175,7 +178,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (MOCK) {
-      startMockRun(question);
+      startMockRun(question, url.searchParams.get("fixture") ?? "default");
     } else {
       broadcast({
         t: "status",

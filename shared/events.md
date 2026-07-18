@@ -28,3 +28,8 @@ markdown contains a line starting "- Aversion:", emit a prior-run note node citi
 time in ms for that lane (lower is better); `iter: 0` is the shared baseline. Emitted by
 `prior run --bench` after the baseline measurement and after every iteration. Consumers
 that don't know this event type should ignore it.
+
+Mock mode fixture selection: `POST /api/run?fixture=kernel` replays
+`server/fixtures/demo-kernel-run.jsonl` (the kernel-optimization experiment race, which
+emits `{t:"metric"}` events). Without the query param, `/api/run` replays the default
+`server/fixtures/demo-run.jsonl` search-loop fixture, exactly as before.

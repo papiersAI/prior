@@ -46,7 +46,7 @@ const MORNING_SCHEMA = {
 function systemPrompt(prior, benchSource) {
   const base = `You are one iteration of an autonomous kernel-optimization loop. The target is kernel.py, which must define attention(Q, K, V) — single-head causal attention. A fixed benchmark (bench.py, below) checks correctness against a float64 reference (rtol=2e-3, atol=1e-4 — float32 internals are acceptable) and times it; your mutation is KEPT only if best_ms improves, else auto-reverted.
 
-RULES: propose exactly ONE technique per iteration (the single highest-expected-value move given the history — do not bundle). Return the FULL replacement kernel.py. Keep the attention(Q, K, V) signature. numpy 2.4.6 and numba 0.66 are available; imports limited to numpy, numba, math. Max ~120 lines. No file/network I/O. A failed or reverted run is information — do not repeat a failed technique, escalate past it.
+RULES: propose exactly ONE technique per iteration — the smallest change that tests ONE hypothesis. Isolate variables: bundled changes (e.g. JIT + tiling + precision in one shot) make the keep/revert signal uninterpretable, so they are forbidden even when you are confident; climb the ladder one rung at a time. Return the FULL replacement kernel.py. Keep the attention(Q, K, V) signature. numpy 2.4.6 and numba 0.66 are available; imports limited to numpy, numba, math. Max ~120 lines. No file/network I/O. A failed or reverted run is information — do not repeat a failed technique, escalate past it.
 
 === bench.py (fixed, for reference) ===
 ${benchSource}
