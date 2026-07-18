@@ -1,0 +1,9 @@
+{
+  "name": "@papiersai/prior",
+  "version": "0.0.1",
+  "description": "Compile your Papiers research library into PRIOR.md — a machine-readable research prior for autoresearch loops.",
+  "type": "module",
+  "bin": { "prior": "./prior.mjs" },
+  "license": "MIT",
+  "repository": "github:papiersAI/prior"
+}
