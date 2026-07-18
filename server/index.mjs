@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 // prior demo server — zero-dependency (Node >= 22).
-// Contract: shared/events.md. Mock mode: MOCK=1 node server/index.mjs
+// Contract: shared/events.md.
+//   MOCK=1 node server/index.mjs   → /api/run replays a fixture
+//   node server/index.mjs          → /api/run spawns the real engine (prior.mjs pursue)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -116,6 +120,76 @@ function scheduleNext() {
   }, delay);
 }
 
+// ---------------------------------------------------------------- real engine
+let engine = null; // { child, sawDone, stopped, reportedFailure }
+
+function stopEngine() {
+  if (!engine) return;
+  engine.stopped = true;
+  try {
+    engine.child.kill("SIGTERM");
+  } catch {}
+  engine = null;
+}
+
+function reportEngineFailure(rec) {
+  if (rec.reportedFailure) return;
+  rec.reportedFailure = true;
+  broadcast({ t: "status", run: "system", text: "run failed — see server log" });
+}
+
+function startEngineRun(question) {
+  stopEngine();
+
+  // Fresh working copy each run. The engine re-reads this file every step, and
+  // POST /api/prior writes it — so live edits steer the REAL loop with no engine changes.
+  try {
+    prior = fs.readFileSync(PRIOR_PATH, "utf8");
+    fs.writeFileSync(WORKING_PATH, prior);
+    broadcast({ t: "prior", markdown: prior });
+  } catch (e) {
+    broadcast({ t: "status", run: "system", text: `could not stage prior: ${e.message}` });
+    return;
+  }
+
+  const child = spawn(
+    process.execPath,
+    ["prior.mjs", "pursue", question, "--rounds", "2", "--iters", "4", "--prior", "server/.prior-working.md"],
+    { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] }
+  );
+  const rec = { child, sawDone: false, stopped: false, reportedFailure: false };
+  engine = rec;
+
+  readline.createInterface({ input: child.stdout }).on("line", (line) => {
+    if (!line.trim()) return;
+    let ev;
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      console.error("[engine] unparseable stdout line:", line.slice(0, 160));
+      return;
+    }
+    if (ev.t === "done") rec.sawDone = true;
+    broadcast(ev);
+  });
+  readline.createInterface({ input: child.stderr }).on("line", (l) => {
+    console.error(`[engine] ${l}`);
+  });
+
+  child.on("error", (e) => {
+    console.error("[engine] spawn failed:", e.message);
+    if (engine === rec) engine = null;
+    reportEngineFailure(rec);
+  });
+  child.on("exit", (code, signal) => {
+    if (engine === rec) engine = null;
+    console.error(`[engine] exited (code ${code}, signal ${signal})`);
+    if (!rec.stopped && !rec.sawDone) reportEngineFailure(rec);
+  });
+
+  broadcast({ t: "status", run: "system", text: `live run started — "${question}"` });
+}
+
 // ---------------------------------------------------------------- http
 function json(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -180,11 +254,7 @@ const server = http.createServer(async (req, res) => {
     if (MOCK) {
       startMockRun(question, url.searchParams.get("fixture") ?? "default");
     } else {
-      broadcast({
-        t: "status",
-        run: "system",
-        text: "no live engine attached — start the server with MOCK=1 for the demo fixture",
-      });
+      startEngineRun(question);
     }
     json(res, 202, { ok: true });
     return;

@@ -57,7 +57,7 @@ function readBatch(ids, format, maxChars) {
   return out;
 }
 
-function gatherEvidence() {
+async function gatherEvidence() {
   process.stderr.write('prior: listing documents…\n');
   const docs = listAll('document', ['--order-by', 'lastEngagedAt:desc'], 150).map((d) => ({
     id: d.id,
@@ -90,6 +90,28 @@ function gatherEvidence() {
     };
   });
 
+  // The full library, including the unread backlog — curation is signal even
+  // (especially) when the item was never opened. Also mine the implicit trust
+  // graph: which sources the researcher repeatedly saves.
+  process.stderr.write('prior: scanning full library (backlog + trust graph)…\n');
+  const { listAllDocs } = await import('./engine/library.mjs');
+  const all = listAllDocs();
+  const unreadDocs = all.filter((d) => !d.engaged);
+  const handleCounts = {};
+  for (const d of all) {
+    const m = (d.title || '').match(/^@([A-Za-z0-9_]+):/);
+    if (m) handleCounts[m[1]] = (handleCounts[m[1]] || 0) + 1;
+  }
+  const backlog = {
+    total: all.length,
+    unread: unreadDocs.length,
+    recentUnreadTitles: unreadDocs.slice(0, 150).map((d) => ({ id: d.id, title: (d.title || '').slice(0, 110) })),
+    topSources: Object.entries(handleCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([handle, saves]) => ({ handle, saves })),
+  };
+
   process.stderr.write('prior: listing conversations…\n');
   const convStubs = listAll('conversation', [], 100).sort((a, b) =>
     (b.updatedAt || '').localeCompare(a.updatedAt || '')
@@ -112,10 +134,13 @@ function gatherEvidence() {
       annotations: highlights.filter((h) => h.note).length,
       conversationsTotal: convStubs.length,
       conversationsRead: conversations.filter((c) => c.text).length,
+      libraryTotal: backlog.total,
+      libraryUnread: backlog.unread,
     },
     documents: docs,
     highlights,
     conversations,
+    backlog,
   };
 }
 
@@ -128,6 +153,7 @@ function compilePrior(evidence, outPath, promptPath) {
       documents: evidence.documents,
       highlights: evidence.highlights,
       conversations: evidence.conversations,
+      backlog: evidence.backlog,
     }));
 
   process.stderr.write('prior: distilling with claude -p (this takes a minute or two)…\n');
@@ -178,7 +204,7 @@ async function main() {
   const cacheDir = join(dirname(outPath), '.prior');
   mkdirSync(cacheDir, { recursive: true });
 
-  const evidence = gatherEvidence();
+  const evidence = await gatherEvidence();
   writeFileSync(join(cacheDir, 'evidence.json'), JSON.stringify(evidence, null, 2));
   process.stderr.write(
     `prior: evidence — ${evidence.stats.documents} docs, ${evidence.stats.highlights} highlights ` +

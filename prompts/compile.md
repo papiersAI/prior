@@ -2,7 +2,7 @@ You are compiling PRIOR.md — a researcher's taste, condensed into a single fil
 
 The current time is {{NOW}}. Evidence stats: {{STATS}}
 
-Below is the researcher's complete trace from their Papiers library, fetched via the read-only `papiers` CLI: every document they chose to import (with engagement counts), every highlight (with their annotation, when they wrote one), and their most recent AI conversations about papers.
+Below is the researcher's complete trace from their Papiers library, fetched via the read-only `papiers` CLI: every document they engaged with (with engagement counts), every highlight (with their annotation, when they wrote one), their most recent AI conversations about papers — and the `backlog` field: the full library scan, including UNREAD saves (recent titles + counts) and `topSources`, the accounts the researcher most often saves from. The researcher curates far more than they read: a save means "someone I trust surfaced this and my instinct flagged it" — that is a judgment event even when the item was never opened. Title clusters in the unread backlog reveal aspirations and technique interests (tier: saved); `topSources` is an implicit trust graph.
 
 <evidence>
 {{EVIDENCE}}
@@ -48,9 +48,16 @@ If evidence is thin here, say so in one line rather than inventing.>
 <Concrete, actionable techniques the researcher has curated — governed by the technique
 exception to rule 2: the save is the signal. One line per technique: what it is, when to
 reach for it, confidence tier, receipts. Confidence ladder: tried (used in a chat) >
-endorsed (annotated) > saved (bare save/highlight). Rank by recency × cluster mass
-(several saves in one area = a hot cluster) × source credibility. Omit the section
-entirely only if the library contains no actionable technique content.>
+endorsed (annotated) > saved (bare save/highlight, including UNREAD backlog items — cite
+their doc_ ids). Rank by recency × cluster mass (several saves in one area = a hot
+cluster) × source credibility. Name the backlog clusters explicitly (e.g. "GPU/CUDA
+learning materials — 12 unread saves"). Omit the section entirely only if the library
+contains no actionable technique content.>
+
+## Trusted sources
+<The implicit trust graph from `backlog.topSources`: one line per notable source —
+handle, save count, and what kind of signal the researcher goes to them for (inferred
+from the titles). Skip sources that are clearly noise (e.g. hiring posts).>
 
 
 ## Last 7 days
