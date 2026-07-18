@@ -80,8 +80,8 @@ ${prior}
 === END SEED ===`;
 }
 
-export async function scout({ objective, getPrior, rounds = 3, emit, search = exaSearch, library = true }) {
-  const state = { nid: 0, signals: [], lastResults: [], queriesRun: new Set() };
+export async function scout({ objective, getPrior, rounds = 3, emit, search = exaSearch, library = true, libraryMax = 8 }) {
+  const state = { nid: 0, signals: [], lastResults: [], queriesRun: new Set(), ring0: [] };
   const node = (props) => {
     const n = { id: `prior-s${++state.nid}`, parentId: null, receipts: [], ...props };
     emit({ t: 'node', run: 'prior', step: 0, node: n });
@@ -96,8 +96,9 @@ export async function scout({ objective, getPrior, rounds = 3, emit, search = ex
       const docs = listAllDocs();
       const unread = docs.filter((d) => !d.engaged).length;
       emit({ t: 'status', run: 'prior', text: `library: ${docs.length} items, ${unread} unread saves` });
-      const ids = await selectBacklog(objective, docs, { max: 8 });
+      const ids = await selectBacklog(objective, docs, { max: libraryMax });
       const excerpts = readDocs(ids);
+      state.ring0 = excerpts;
       for (const e of excerpts) {
         node({ kind: 'result', text: `📚 unread save: ${e.title.slice(0, 100)}`, url: e.id });
         state.lastResults.push({
@@ -153,7 +154,7 @@ export async function scout({ objective, getPrior, rounds = 3, emit, search = ex
   for (const t of arsenal.techniques) {
     node({ kind: 'direction', text: `arsenal: ${t.technique} (${t.family})`, receipts: t.receipts });
   }
-  return { signals: state.signals, techniques: arsenal.techniques };
+  return { signals: state.signals, techniques: arsenal.techniques, ring0: state.ring0 };
 }
 
 export function arsenalBlock(techniques) {

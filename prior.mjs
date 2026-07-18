@@ -190,6 +190,12 @@ async function main() {
     await cliPursue(args.slice(1));
     return;
   }
+
+  if (cmd === 'ideate') {
+    const { cliIdeate } = await import('./engine/ideate.mjs');
+    await cliIdeate(args.slice(1));
+    return;
+  }
   const outFlag = args.indexOf('--out');
   const outPath = resolve(outFlag > -1 ? args[outFlag + 1] : 'PRIOR.md');
   // A compiler is a prompt. This flag swaps the whole compiler.
