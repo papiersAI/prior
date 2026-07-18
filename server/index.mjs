@@ -301,6 +301,7 @@ const server = http.createServer(async (req, res) => {
   // ---- stop
   if (req.method === "POST" && url.pathname === "/api/stop") {
     stopPlayback();
+    stopEngine();
     broadcast({ t: "status", run: "system", text: "run stopped" });
     json(res, 200, { ok: true });
     return;

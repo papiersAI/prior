@@ -90,7 +90,9 @@ function Node({ node, accent, onReceiptClick }) {
       </span>
     );
   } else if (node.kind === "result") {
-    const domain = node.url ? domainOf(node.url) : null;
+    // library ids (doc_/hl_/cnv_) are not http urls — render as non-link chips
+    const idUrl = node.url && /^(doc|hl|cnv)_/.test(node.url) ? node.url : null;
+    const domain = !idUrl && node.url ? domainOf(node.url) : null;
     const reverted = /revert/i.test(node.text);
     body = (
       <span
@@ -102,7 +104,24 @@ function Node({ node, accent, onReceiptClick }) {
       >
         {node.text}
         {domain && (
-          <span className="ml-2 font-mono text-[10.5px] text-white/30">{domain}</span>
+          <a
+            href={node.url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-2 font-mono text-[10.5px] text-white/30 hover:text-white/60 hover:underline transition-colors"
+          >
+            {domain}
+          </a>
+        )}
+        {idUrl && (
+          <button
+            onClick={() => onReceiptClick({ ref: idUrl, quote: "" })}
+            className="ml-2 align-middle font-mono text-[10px] leading-none px-1.5 py-[3px]
+                       rounded-sm border border-white/15 text-white/45 hover:bg-white/5
+                       hover:text-white/70 transition-colors cursor-pointer"
+          >
+            {shortRef(idUrl)}
+          </button>
         )}
       </span>
     );

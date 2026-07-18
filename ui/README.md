@@ -12,6 +12,12 @@ cd ..            # repo root
 MOCK=1 node server/index.mjs
 ```
 
+Without `MOCK=1`, **run** drives the real engine instead: the server stages
+`PRIOR.md` → `server/.prior-working.md` and spawns
+`node prior.mjs pursue "<question>" --rounds 2 --iters 4 --prior server/.prior-working.md`
+(needs `.env` keys; ~8–10 min per run). Live prior edits steer the real loop too —
+the engine re-reads the working file every step.
+
 Terminal 2 — the UI:
 
 ```sh
