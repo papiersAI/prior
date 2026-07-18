@@ -21,3 +21,10 @@ realistic pacing (400–1200ms between events). A live PRIOR.md edit during mock
 within 2 steps, cause a scripted "pruned" note node citing the edit (fake it: if the posted
 markdown contains a line starting "- Aversion:", emit a prior-run note node citing that line text).
 ```
+
+## Addendum: experiment-loop events
+
+`{ t:"metric", run:"vanilla"|"prior", iter:number, value:number }` — current best benchmark
+time in ms for that lane (lower is better); `iter: 0` is the shared baseline. Emitted by
+`prior run --bench` after the baseline measurement and after every iteration. Consumers
+that don't know this event type should ignore it.

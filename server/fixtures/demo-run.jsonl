@@ -1,0 +1,68 @@
+{"t":"status","run":"system","text":"two loops armed on the same question — left: vanilla, right: conditioned on PRIOR.md (compiled 2026-07-18 · 32 docs · 193 highlights)"}
+{"t":"divergence","value":0}
+{"t":"node","run":"vanilla","step":1,"node":{"id":"v01","parentId":null,"kind":"query","text":"inject human research taste into automated research loops"}}
+{"t":"node","run":"prior","step":1,"node":{"id":"p01","parentId":null,"kind":"query","text":"inject human research taste into automated research loops"}}
+{"t":"status","run":"vanilla","text":"exa: 8 results for seed query, expanding top 3"}
+{"t":"node","run":"vanilla","step":1,"node":{"id":"v02","parentId":"v01","kind":"result","text":"The Karpathy Loop: AutoResearch, One Year In","url":"https://karpathy.bearblog.dev/autoresearch-one-year/"}}
+{"t":"node","run":"prior","step":1,"node":{"id":"p02","parentId":"p01","kind":"result","text":"The Karpathy Loop: AutoResearch, One Year In","url":"https://karpathy.bearblog.dev/autoresearch-one-year/"}}
+{"t":"node","run":"vanilla","step":1,"node":{"id":"v03","parentId":"v01","kind":"result","text":"AlphaEvolve: A Coding Agent for Scientific and Algorithmic Discovery","url":"https://deepmind.google/discover/blog/alphaevolve/"}}
+{"t":"node","run":"prior","step":1,"node":{"id":"p03","parentId":"p01","kind":"result","text":"AlphaEvolve: A Coding Agent for Scientific and Algorithmic Discovery","url":"https://deepmind.google/discover/blog/alphaevolve/"}}
+{"t":"node","run":"vanilla","step":1,"node":{"id":"v04","parentId":"v01","kind":"result","text":"A Survey of LLM-Based Autonomous Research Agents","url":"https://arxiv.org/abs/2601.04821"}}
+{"t":"node","run":"prior","step":1,"node":{"id":"p04","parentId":"p01","kind":"result","text":"ENPIRE: Emergent Novelty via Population-Based Iterated Research","url":"https://arxiv.org/abs/2603.11402"}}
+{"t":"divergence","value":0.03}
+{"t":"status","run":"prior","text":"PRIOR.md loaded — 8 threads; weighting § Agentic search & retrieval interfaces (momentum: rising, last touched 2026-07-17)"}
+{"t":"node","run":"vanilla","step":2,"node":{"id":"v05","parentId":null,"kind":"query","text":"research taste elicitation from human experts"}}
+{"t":"node","run":"prior","step":2,"node":{"id":"p05","parentId":null,"kind":"query","text":"research taste elicitation from human experts"}}
+{"t":"node","run":"vanilla","step":2,"node":{"id":"v06","parentId":"v05","kind":"result","text":"Learning Research Preferences from Pairwise Idea Comparisons","url":"https://arxiv.org/abs/2512.08133"}}
+{"t":"node","run":"prior","step":2,"node":{"id":"p06","parentId":"p05","kind":"result","text":"Learning Research Preferences from Pairwise Idea Comparisons","url":"https://arxiv.org/abs/2512.08133"}}
+{"t":"node","run":"vanilla","step":2,"node":{"id":"v07","parentId":"v05","kind":"result","text":"Can LLMs Generate Novel Research Ideas? A Large-Scale Human Study","url":"https://arxiv.org/abs/2409.04109"}}
+{"t":"node","run":"prior","step":2,"node":{"id":"p07","parentId":"p05","kind":"result","text":"Can LLMs Generate Novel Research Ideas? A Large-Scale Human Study","url":"https://arxiv.org/abs/2409.04109"}}
+{"t":"divergence","value":0.06}
+{"t":"status","run":"vanilla","text":"step 2 complete — landscape looks broad, expanding coverage"}
+{"t":"node","run":"prior","step":3,"node":{"id":"p08","parentId":null,"kind":"direction","text":"Pivot: the tool interface is the lever — study how deep-research loops shape their retrieval surface, not which model wins","receipts":[{"ref":"§ Agentic search & retrieval interfaces","quote":"Is well-configured lexical retrieval (BM25) sufficient for deep research once you pair it with a frontier LLM and a good tool interface?"},{"ref":"hl_600604f399645b97ce5f4a872885f95a","quote":"readdocument also has offsets so it's not reading the whole thing in one go"}]}}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"v08","parentId":null,"kind":"direction","text":"Direction: map the evaluation landscape — how is automated research quality measured?"}}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"v09","parentId":"v08","kind":"query","text":"benchmarks for automated scientific discovery agents"}}
+{"t":"node","run":"prior","step":3,"node":{"id":"p09","parentId":"p08","kind":"query","text":"BM25 lexical retrieval sufficiency deep research agents","receipts":[{"ref":"hl_988d4cbe8ad3c9ebbf2d724a192b6b73","quote":"BM25 is sufficient with capable LLMs at depth"}]}}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"v10","parentId":"v09","kind":"result","text":"PaperBench: Evaluating AI's Ability to Replicate AI Research","url":"https://arxiv.org/abs/2504.01848"}}
+{"t":"node","run":"prior","step":3,"node":{"id":"p10","parentId":"p09","kind":"result","text":"Rethinking Agentic Search with PI-SERINI: Is Lexical Retrieval Sufficient?","url":"https://arxiv.org/abs/2607.02191","receipts":[{"ref":"doc_7858379e3e090aa7323601eec60c1175","quote":"already in the library — freshest touch 2026-07-17; resolving its highlights instead of re-reading"}]}}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"v11","parentId":"v09","kind":"result","text":"ResearchBench: A Benchmark Suite for LLM Agents on Open Scientific Problems","url":"https://arxiv.org/abs/2510.13112"}}
+{"t":"divergence","value":0.14}
+{"t":"node","run":"prior","step":3,"node":{"id":"p11","parentId":"p09","kind":"result","text":"Fresh Rankings, Cached Controllers: Serving Agentic Retrieval at Depth","url":"https://arxiv.org/abs/2605.17740","receipts":[{"ref":"hl_5fc0c0e715aea8732ff199d6fef0900a","quote":"a controller mediating cached rankings is the real lever"}]}}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"v12","parentId":"v09","kind":"result","text":"MLGym: A Leaderboard and Gym for AI Research Agents","url":"https://github.com/facebookresearch/MLGym"}}
+{"t":"status","run":"prior","text":"papiers read hl_988d4cbe… → resolved from doc_7858379e (PI-SERINI); receipt attached to branch score"}
+{"t":"divergence","value":0.22}
+{"t":"node","run":"vanilla","step":4,"node":{"id":"v13","parentId":null,"kind":"query","text":"survey human-in-the-loop machine learning systems"}}
+{"t":"node","run":"prior","step":4,"node":{"id":"p12","parentId":null,"kind":"direction","text":"Taste is revealed preference: mine the reading trace — highlights, annotations, arguments — instead of asking the researcher to write it down","receipts":[{"ref":"hl_ffae6284cfaddcfe813bb7106a97dbf5","quote":"How do we collect examples of this? — The core bottleneck is research intuition"},{"ref":"hl_cbb4493b5ff73e8d3783866f8eed553a","quote":"where do the questions and answers get to live?... human memory is fragile"}]}}
+{"t":"node","run":"vanilla","step":4,"node":{"id":"v14","parentId":"v13","kind":"result","text":"A Survey of Human-in-the-Loop for Machine Learning","url":"https://www.sciencedirect.com/science/article/pii/S0167739X22001790"}}
+{"t":"node","run":"prior","step":4,"node":{"id":"p13","parentId":"p12","kind":"query","text":"revealed preference from interaction traces personalizing research agents"}}
+{"t":"node","run":"vanilla","step":4,"node":{"id":"v15","parentId":"v13","kind":"result","text":"Human-AI Collaboration in Science: A Systematic Review","url":"https://arxiv.org/abs/2503.16901"}}
+{"t":"node","run":"prior","step":4,"node":{"id":"p14","parentId":"p13","kind":"result","text":"From Logs to Priors: Learning User Research Models from Interaction Traces","url":"https://arxiv.org/abs/2606.09114"}}
+{"t":"divergence","value":0.31}
+{"t":"node","run":"prior","step":4,"node":{"id":"p15","parentId":"p13","kind":"result","text":"Annotation Is Signal: Weak Supervision from Marginalia at Scale","url":"https://arxiv.org/abs/2604.20037"}}
+{"t":"node","run":"vanilla","step":4,"node":{"id":"v16","parentId":null,"kind":"note","text":"landscape is broad; compiling a comparative overview of 12 frameworks"}}
+{"t":"status","run":"vanilla","text":"queueing: leaderboard scrape + framework comparison matrix"}
+{"t":"divergence","value":0.36}
+{"t":"node","run":"prior","step":5,"node":{"id":"p16","parentId":null,"kind":"direction","text":"Shape of the build: a compiler from library → standing context file, receipts resolvable mid-run — make the paths visible instead of romanticizing the foraging","receipts":[{"ref":"hl_afc51e0c8ae7ce274c0c6eb813c89494","quote":"curiosity flourishes when paths are visible. most people do not have the time to clear the brush... instead of romanticizing the labor of information foraging"},{"ref":"hl_0fddc0e8209671695198415b44b6d611","quote":"a good question is \"specific enough to guide research, but open enough to allow for discovery\""}]}}
+{"t":"node","run":"vanilla","step":5,"node":{"id":"v17","parentId":null,"kind":"query","text":"autoresearch frameworks comparison 2026"}}
+{"t":"node","run":"vanilla","step":5,"node":{"id":"v18","parentId":"v17","kind":"result","text":"Awesome-Autonomous-Research: A Curated List","url":"https://github.com/awesome-lists/awesome-autonomous-research"}}
+{"t":"node","run":"prior","step":5,"node":{"id":"p17","parentId":"p16","kind":"query","text":"standing context files long-horizon agents program.md"}}
+{"t":"node","run":"vanilla","step":5,"node":{"id":"v19","parentId":"v17","kind":"result","text":"The State of AI Research Agents — Q2 2026 Market Map","url":"https://www.stateof.ai/research-agents-2026"}}
+{"t":"node","run":"prior","step":5,"node":{"id":"p18","parentId":"p17","kind":"result","text":"Effective Context Engineering for Long-Horizon Agents","url":"https://www.anthropic.com/engineering/effective-context-engineering"}}
+{"t":"divergence","value":0.42}
+{"t":"node","run":"prior","step":5,"node":{"id":"p19","parentId":"p16","kind":"note","text":"caveat from the prior: strong models search vertically inside a weak hypothesis — the file must prune directions, not only seed them","receipts":[{"ref":"hl_3aacde26c36702ef720f122937392866","quote":"Claude Opus 4.7 often searches vertically within the same weak hypothesis"}]}}
+{"t":"status","run":"prior","text":"branch scorer: 2 candidate directions rejected (leaderboard survey, safety framing) — cited § Aversions & negative space"}
+{"t":"node","run":"vanilla","step":6,"node":{"id":"v20","parentId":null,"kind":"direction","text":"Direction: propose a meta-benchmark — score taste-injection methods across existing leaderboards"}}
+{"t":"node","run":"vanilla","step":6,"node":{"id":"v21","parentId":"v20","kind":"note","text":"drafting a 2×2 of automation level vs human effort; needs more surveys to fill the cells"}}
+{"t":"divergence","value":0.47}
+{"t":"node","run":"prior","step":6,"node":{"id":"p20","parentId":null,"kind":"direction","text":"Scope for two people: don't build another loop — build the judgment artifact every loop lacks (the program.md slot, compiled from the library)","receipts":[{"ref":"hl_cbe9c978e7088041b821296e8fac7e7d","quote":"how many ideas does one person have in a day, and how many do they actually get to do?... the drudgery of execution"},{"ref":"§ Builder ethos & egoless ambition","quote":"why is execution (not ideas) the bottleneck?"}]}}
+{"t":"node","run":"prior","step":6,"node":{"id":"p21","parentId":"p20","kind":"result","text":"Introducing PostTrainBench","url":"https://arxiv.org/abs/2602.05513","receipts":[{"ref":"doc_3a0b017632501531019c69acc0ccc2f3","quote":"already in the library — thread 5; his annotation there is the seed of this whole question"}]}}
+{"t":"node","run":"vanilla","step":6,"node":{"id":"v22","parentId":"v20","kind":"result","text":"Benchmarks Are All You Need? A Meta-Analysis of Agent Evaluation","url":"https://arxiv.org/abs/2511.02214"}}
+{"t":"divergence","value":0.52}
+{"t":"status","run":"system","text":"trajectories separated at step 3 and have not re-converged"}
+{"t":"node","run":"vanilla","step":7,"node":{"id":"v23","parentId":null,"kind":"note","text":"summary: taste injection is an open problem; recommend a survey paper and a benchmark suite as next steps"}}
+{"t":"divergence","value":0.55}
+{"t":"node","run":"prior","step":7,"node":{"id":"p22","parentId":null,"kind":"note","text":"question for the morning: which frontier LLM sits atop the BM25 surface for the overnight loop — the one you read with, or the one that probes widest?","receipts":[{"ref":"hl_cebb8f36ac2e633504f90cd78d622c8a","quote":"i wonder which ones they pair it with"}]}}
+{"t":"node","run":"prior","step":7,"node":{"id":"p23","parentId":null,"kind":"note","text":"question for the morning: how much scaffolding should the prior inject — seed queries only, or condition the branch scorer too? one-line answer appends to PRIOR.md","receipts":[{"ref":"hl_d29a6b5ead79fa8caf81e64ee6521d62","quote":"how much guidance/scaffolding is provided beforehand?"}]}}
+{"t":"status","run":"system","text":"runs complete — prior run ends with questions for the morning; answers append to PRIOR.md"}
+{"t":"done","run":"vanilla"}
+{"t":"done","run":"prior"}

@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #f0b03f;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #0a0a0b;
+  color: #fff;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* node arrival */
+@keyframes node-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.node-in {
+  animation: node-in 220ms ease-out both;
+}
+
+/* receipt click → flash the matched line in the prior pane */
+@keyframes flash-line {
+  0% {
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.flash-line {
+  animation: flash-line 1.6s ease-out both;
+  border-radius: 2px;
+}
+
+/* minimal markdown styling for the prior pane */
+.prior-md {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: rgb(255 255 255 / 0.55);
+  overflow-wrap: break-word;
+}
+.prior-md h1,
+.prior-md h2,
+.prior-md h3,
+.prior-md h4 {
+  color: rgb(255 255 255 / 0.9);
+  font-weight: 600;
+  margin: 1.4em 0 0.5em;
+}
+.prior-md h1 {
+  font-size: 14px;
+  margin-top: 0.2em;
+}
+.prior-md h2 {
+  font-size: 13px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  padding-bottom: 0.35em;
+}
+.prior-md h3 {
+  font-size: 12.5px;
+}
+.prior-md p,
+.prior-md li {
+  margin: 0.45em 0;
+}
+.prior-md ul,
+.prior-md ol {
+  padding-left: 1.2em;
+  list-style: disc;
+}
+.prior-md blockquote {
+  border-left: 2px solid rgb(255 255 255 / 0.15);
+  padding-left: 0.9em;
+  margin: 0.6em 0;
+  font-style: italic;
+  color: rgb(255 255 255 / 0.4);
+}
+.prior-md strong {
+  color: rgb(255 255 255 / 0.8);
+  font-weight: 600;
+}
+.prior-md em {
+  color: rgb(255 255 255 / 0.6);
+}
+.prior-md code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgb(255 255 255 / 0.7);
+}
+.prior-md a {
+  color: rgb(255 255 255 / 0.7);
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 0.2);
+}
+
+/* thin scrollbars everywhere */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+}

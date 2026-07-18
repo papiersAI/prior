@@ -13,14 +13,14 @@ if (process.env.ANTHROPIC_API_KEY) {
   client = new Anthropic();
 }
 
-export async function completeJSON({ system, user, schema, maxTokens = 8000 }) {
+export async function completeJSON({ system, user, schema, maxTokens = 8000, effort }) {
   if (client) {
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: user }],
-      output_config: { effort: EFFORT, format: { type: 'json_schema', schema } },
+      output_config: { effort: effort || EFFORT, format: { type: 'json_schema', schema } },
     });
     const text = res.content.find((b) => b.type === 'text')?.text || '';
     return JSON.parse(text);
