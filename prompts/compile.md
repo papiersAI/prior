@@ -20,7 +20,8 @@ Structure (exactly these sections):
 
 ```
 # PRIOR — <infer the researcher's name/identity if evident, else "this researcher">
-> Compiled <date> from <N> documents, <N> highlights (<N> annotated), <N> conversations.
+> Compiled <date> from a <backlog.total>-item library (<backlog.unread> unread saves) —
+> <N> engaged documents, <N> highlights (<N> annotated), <N> conversations.
 > This file is an index into a library, not a summary of it. Every [id] resolves via
 > `papiers read <id>`. To go beyond this file: `papiers search "<query>"` searches all
 > passages, highlights, and conversations; `papiers list --kind highlight --since 7d`
