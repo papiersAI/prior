@@ -149,9 +149,15 @@ function compilePrior(evidence, outPath, promptPath) {
   return md;
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
+
+  if (cmd === 'run') {
+    const { cliRun } = await import('./engine/run.mjs');
+    await cliRun(args.slice(1));
+    return;
+  }
   const outFlag = args.indexOf('--out');
   const outPath = resolve(outFlag > -1 ? args[outFlag + 1] : 'PRIOR.md');
   // A compiler is a prompt. This flag swaps the whole compiler.
@@ -159,7 +165,7 @@ function main() {
   const promptPath = resolve(promptFlag > -1 ? args[promptFlag + 1] : join(HERE, 'prompts', 'compile.md'));
 
   if (cmd !== 'compile') {
-    process.stderr.write('usage: prior compile [--out PRIOR.md] [--prompt prompts/compile.md]\n');
+    process.stderr.write('usage: prior compile [--out PRIOR.md] [--prompt prompts/compile.md]\n       prior run "research question" [--steps 4] [--prior PRIOR.md]\n');
     process.exit(cmd ? 1 : 0);
   }
 
@@ -177,4 +183,4 @@ function main() {
   process.stderr.write(`prior: wrote ${outPath}\n`);
 }
 
-main();
+await main();

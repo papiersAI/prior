@@ -3,7 +3,12 @@
   "version": "0.0.1",
   "description": "Compile your Papiers research library into PRIOR.md — a machine-readable research prior for autoresearch loops.",
   "type": "module",
-  "bin": { "prior": "./prior.mjs" },
+  "bin": {
+    "prior": "./prior.mjs"
+  },
   "license": "MIT",
-  "repository": "github:papiersAI/prior"
+  "repository": "github:papiersAI/prior",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3"
+  }
 }
