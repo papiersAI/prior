@@ -17,6 +17,9 @@ const WORKING_PATH = path.join(__dirname, ".prior-working.md");
 const FIXTURES = {
   default: path.join(__dirname, "fixtures", "demo-run.jsonl"),
   kernel: path.join(__dirname, "fixtures", "demo-kernel-run.jsonl"),
+  ideate: path.join(__dirname, "fixtures", "ideate-cholesky.jsonl"),
+  tree: path.join(__dirname, "fixtures", "tree-cholesky.jsonl"),
+  "tree-synthetic": path.join(__dirname, "fixtures", "tree-synthetic.jsonl"),
 };
 const PORT = 8787;
 const MOCK = process.env.MOCK === "1";
@@ -77,7 +80,7 @@ function startMockRun(question, fixture) {
     return;
   }
   playback = { events, i: 0, timer: null, pendingAversion: null };
-  broadcast({ t: "status", run: "system", text: `dual run started — "${question}"` });
+  broadcast({ t: "status", run: "system", text: `run started — "${question}"` });
   scheduleNext();
 }
 
@@ -138,7 +141,7 @@ function reportEngineFailure(rec) {
   broadcast({ t: "status", run: "system", text: "run failed — see server log" });
 }
 
-function startEngineRun(question) {
+function startEngineRun(question, mode) {
   stopEngine();
 
   // Fresh working copy each run. The engine re-reads this file every step, and
@@ -152,11 +155,14 @@ function startEngineRun(question) {
     return;
   }
 
-  const child = spawn(
-    process.execPath,
-    ["prior.mjs", "pursue", question, "--rounds", "2", "--iters", "4", "--prior", "server/.prior-working.md"],
-    { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] }
-  );
+  // "explore" (default) grows the recursive idea tree; "pursue" runs the dual race.
+  // `question` may be a task-file path (e.g. bench/tasks/gpumode-cholesky.md) — passed
+  // through verbatim as a single argument; the engine resolves file-or-text itself.
+  const argv =
+    mode === "pursue"
+      ? ["prior.mjs", "pursue", question, "--rounds", "2", "--iters", "4", "--prior", "server/.prior-working.md"]
+      : ["prior.mjs", "explore", question, "--prior", "server/.prior-working.md"];
+  const child = spawn(process.execPath, argv, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
   const rec = { child, sawDone: false, stopped: false, reportedFailure: false };
   engine = rec;
 
@@ -242,19 +248,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ---- start dual run
+  // ---- start run  {question, mode:"explore"|"pursue"} (default "explore")
   if (req.method === "POST" && url.pathname === "/api/run") {
     let question = "";
+    let mode = "explore";
     try {
-      question = JSON.parse((await readBody(req)) || "{}").question ?? "";
+      const body = JSON.parse((await readBody(req)) || "{}");
+      question = body.question ?? "";
+      if (body.mode === "pursue") mode = "pursue";
     } catch {
       json(res, 400, { error: "invalid JSON" });
       return;
     }
     if (MOCK) {
-      startMockRun(question, url.searchParams.get("fixture") ?? "default");
+      const fixture = url.searchParams.get("fixture") ?? "default";
+      const fixturePath = FIXTURES[fixture];
+      if (fixturePath && !fs.existsSync(fixturePath)) {
+        json(res, 409, {
+          error: `fixture "${fixture}" has no recording yet — expected ${path.relative(ROOT, fixturePath)}. Record one (e.g. \`node prior.mjs explore bench/tasks/gpumode-cholesky.md > ${path.relative(ROOT, fixturePath)}\`) or use ?fixture=tree-synthetic.`,
+        });
+        return;
+      }
+      startMockRun(question, fixture);
     } else {
-      startEngineRun(question);
+      startEngineRun(question, mode);
     }
     json(res, 202, { ok: true });
     return;

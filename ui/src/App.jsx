@@ -1,13 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
 import Column from "./components/Column.jsx";
 import PriorPane from "./components/PriorPane.jsx";
+import TreeCanvas from "./components/TreeCanvas.jsx";
+import BriefOverlay from "./components/BriefOverlay.jsx";
 
 const SERVER = "http://localhost:8787";
+const PARAMS = new URLSearchParams(window.location.search);
+// pick the mock fixture via the page URL: ?fixture=tree-synthetic | tree | kernel | default | ideate
+const FIXTURE = PARAMS.get("fixture");
+// live engine mode: explore (idea tree, default) | pursue (dual race) — ?mode=pursue
+const MODE = PARAMS.get("mode") === "pursue" ? "pursue" : "explore";
+// does this page expect the tree view? (used only for the idle state + pane default)
+const TREEISH = FIXTURE ? FIXTURE === "tree" || FIXTURE === "tree-synthetic" : MODE === "explore";
+
 const FIXTURE_QUESTION =
   "What should a 2-person team build to inject human research taste into autoresearch loops?";
 const KERNEL_QUESTION = "Make naive numpy attention as fast as possible on CPU";
-// pick the mock fixture via the page URL: http://localhost:5173/?fixture=kernel
-const FIXTURE = new URLSearchParams(window.location.search).get("fixture");
+const TREE_QUESTION = "GPU MODE — batched dense Cholesky (leaderboard 776)";
 
 const fmtSpeedup = (s) => (s >= 10 ? String(Math.round(s)) : s.toFixed(1));
 
@@ -33,19 +42,23 @@ function useTween(target, ms = 600) {
 
 export default function App() {
   const [nodes, setNodes] = useState({ vanilla: [], prior: [] });
+  const [treeNodes, setTreeNodes] = useState([]); // run:"tree" nodes, live-updated in place
+  const [brief, setBrief] = useState(null);
+  const [briefOpen, setBriefOpen] = useState(false);
   const [divergence, setDivergence] = useState(0);
   const [status, setStatus] = useState({ run: "system", text: "idle — press run" });
+  const [tick, setTick] = useState({ run: "system", text: "idle — press run" }); // tree-mode ticker
   const [priorMd, setPriorMd] = useState("");
   const [done, setDone] = useState({ vanilla: false, prior: false });
   const [running, setRunning] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [paneOpen, setPaneOpen] = useState(true);
+  const [paneOpen, setPaneOpen] = useState(!TREEISH);
   const [question, setQuestion] = useState(
-    FIXTURE === "kernel" ? KERNEL_QUESTION : FIXTURE_QUESTION
+    FIXTURE === "kernel" ? KERNEL_QUESTION : FIXTURE === "default" ? FIXTURE_QUESTION : TREE_QUESTION
   );
   const [metrics, setMetrics] = useState({ vanilla: [], prior: [] }); // best_ms per iter
 
-  const depthRef = useRef({}); // node id → tree depth
+  const depthRef = useRef({}); // race node id → tree depth
   const priorApi = useRef(null); // set by PriorPane: { jumpTo(receipt) }
 
   useEffect(() => {
@@ -60,10 +73,28 @@ export default function App() {
         return;
       }
       if (ev.t === "node") {
-        const n = ev.node;
-        const depth = n.parentId ? (depthRef.current[n.parentId] ?? 0) + 1 : 0;
-        depthRef.current[n.id] = depth;
-        setNodes((s) => ({ ...s, [ev.run]: [...s[ev.run], { ...n, depth, step: ev.step }] }));
+        if (ev.run === "tree") {
+          setTreeNodes((s) => [...s, { ...ev.node }]);
+        } else {
+          // race lanes; during a tree run these are the scout's seed-reading events →
+          // they surface in the bottom ticker only (the canvas ignores them)
+          const n = ev.node;
+          const depth = n.parentId ? (depthRef.current[n.parentId] ?? 0) + 1 : 0;
+          depthRef.current[n.id] = depth;
+          setNodes((s) => ({ ...s, [ev.run]: [...s[ev.run], { ...n, depth, step: ev.step }] }));
+          setTick({ run: ev.run, text: n.text });
+        }
+      } else if (ev.t === "update") {
+        setTreeNodes((s) =>
+          s.map((n) =>
+            n.id === ev.nodeId
+              ? { ...n, score: ev.score ?? n.score, status: ev.status ?? n.status }
+              : n
+          )
+        );
+      } else if (ev.t === "brief") {
+        setBrief(ev.markdown);
+        setRunning(false);
       } else if (ev.t === "divergence") {
         setDivergence(ev.value);
       } else if (ev.t === "metric") {
@@ -73,6 +104,7 @@ export default function App() {
         }));
       } else if (ev.t === "status") {
         setStatus({ run: ev.run, text: ev.text });
+        setTick({ run: ev.run, text: ev.text });
       } else if (ev.t === "prior") {
         setPriorMd(ev.markdown);
       } else if (ev.t === "done") {
@@ -94,6 +126,9 @@ export default function App() {
     }
     depthRef.current = {};
     setNodes({ vanilla: [], prior: [] });
+    setTreeNodes([]);
+    setBrief(null);
+    setBriefOpen(false);
     setDone({ vanilla: false, prior: false });
     setDivergence(0);
     setMetrics({ vanilla: [], prior: [] });
@@ -101,14 +136,23 @@ export default function App() {
     const runUrl = FIXTURE
       ? `${SERVER}/api/run?fixture=${encodeURIComponent(FIXTURE)}`
       : `${SERVER}/api/run`;
-    await fetch(runUrl, {
+    const res = await fetch(runUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    }).catch(() => {
+      body: JSON.stringify({ question, mode: MODE }),
+    }).catch(() => null);
+    if (!res) {
       setRunning(false);
-      setStatus({ run: "system", text: "server unreachable — is `MOCK=1 node server/index.mjs` running?" });
-    });
+      setStatus({ run: "system", text: "server unreachable — is `node server/index.mjs` running?" });
+      return;
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setRunning(false);
+      const text = err.error ?? `run failed (${res.status})`;
+      setStatus({ run: "system", text });
+      setTick({ run: "system", text });
+    }
   }
 
   function onReceiptClick(receipt) {
@@ -116,6 +160,10 @@ export default function App() {
     // pane may need a render to expand before we can scroll to the line
     setTimeout(() => priorApi.current?.jumpTo(receipt), 60);
   }
+
+  const treeMode = treeNodes.length > 0;
+  const raceActive =
+    nodes.vanilla.length > 0 || (!treeMode && nodes.prior.length > 0) || divergence > 0;
 
   const shown = useTween(divergence);
   const pct = Math.round(shown * 100);
@@ -132,36 +180,28 @@ export default function App() {
     ? [Math.min(...allValues), Math.max(...allValues)]
     : null;
 
+  const ticker = treeMode ? tick : status;
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0a0a0b] text-white select-text">
       {/* ── top bar ─────────────────────────────────────────── */}
-      <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-8 px-6 h-[84px] shrink-0">
-        <div className="flex items-center gap-5 min-w-0">
-          <span className="text-lg font-medium tracking-[0.35em] text-white/90 shrink-0">
-            prior
-          </span>
-          <input
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            spellCheck={false}
-            className="flex-1 min-w-0 max-w-xl bg-transparent font-mono text-xs text-white/60
-                       placeholder-white/25 border-b border-white/10 focus:border-white/25
-                       outline-none py-1.5 transition-colors"
-            placeholder="research question…"
-          />
-          <button
-            onClick={run}
-            className="shrink-0 px-4 py-1.5 text-sm text-white/70 border border-white/15
-                       rounded-sm hover:bg-white/5 hover:text-white/90 transition-colors"
-          >
-            {running ? "stop" : "run"}
-          </button>
-        </div>
+      <header className="flex items-center gap-5 px-6 h-[72px] shrink-0">
+        <span className="text-lg font-medium tracking-[0.35em] text-white/90 shrink-0">
+          prior
+        </span>
+        <input
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          spellCheck={false}
+          className="flex-1 min-w-0 bg-transparent font-mono text-xs text-white/60
+                     placeholder-white/25 border-b border-white/10 focus:border-white/25
+                     outline-none py-1.5 transition-colors"
+          placeholder="task file or research question…"
+        />
 
-        {/* headline — must read from the back of a room */}
-        {hasMetrics ? (
-          /* experiment mode: per-lane speedup vs shared baseline */
-          <div className="flex flex-col items-center gap-2">
+        {/* race headline — must read from the back of a room (untouched code path) */}
+        {!treeMode && hasMetrics && (
+          <div className="flex flex-col items-center gap-2 shrink-0">
             <div className="flex items-baseline gap-3 font-mono tabular-nums leading-none">
               <span className="text-sm text-white/40">vanilla</span>
               <span className="text-4xl font-semibold text-white/80">
@@ -180,9 +220,9 @@ export default function App() {
               </span>
             </div>
           </div>
-        ) : (
-          /* search mode: divergence meter, exactly as before */
-          <div className="flex flex-col items-center gap-1.5">
+        )}
+        {!treeMode && !hasMetrics && raceActive && (
+          <div className="flex flex-col items-center gap-1.5 shrink-0">
             <span className="font-mono tabular-nums text-4xl font-semibold text-accent leading-none">
               {pct}%
             </span>
@@ -198,35 +238,61 @@ export default function App() {
           </div>
         )}
 
-        <div className="flex justify-end">
-          {!connected && (
-            <span className="font-mono text-[10px] text-white/25">reconnecting…</span>
-          )}
-        </div>
+        {brief && (
+          <button
+            onClick={() => setBriefOpen(true)}
+            className="shrink-0 px-3 py-1.5 text-[12px] text-white/60 border border-white/15
+                       rounded-sm hover:bg-white/5 hover:text-white/90 transition-colors cursor-pointer"
+          >
+            view brief
+          </button>
+        )}
+        <button
+          onClick={run}
+          className="shrink-0 px-4 py-1.5 text-sm text-white/70 border border-white/15
+                     rounded-sm hover:bg-white/5 hover:text-white/90 transition-colors cursor-pointer"
+        >
+          {running ? "stop" : "run"}
+        </button>
+        {!connected && (
+          <span className="shrink-0 font-mono text-[10px] text-white/25">reconnecting…</span>
+        )}
       </header>
 
       {/* ── main split ──────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 border-t border-white/10">
-        <main className="flex-1 min-w-0 grid grid-cols-2 divide-x divide-white/10">
-          <Column
-            label="vanilla"
-            items={nodes.vanilla}
-            finished={done.vanilla}
-            accent={false}
-            series={vSeries}
-            domain={domain}
-            onReceiptClick={onReceiptClick}
-          />
-          <Column
-            label="with prior"
-            items={nodes.prior}
-            finished={done.prior}
-            accent
-            series={pSeries}
-            domain={domain}
-            onReceiptClick={onReceiptClick}
-          />
-        </main>
+        {treeMode ? (
+          <main className="flex-1 min-w-0 min-h-0">
+            <TreeCanvas nodes={treeNodes} onReceiptClick={onReceiptClick} />
+          </main>
+        ) : TREEISH ? (
+          <main className="flex-1 min-w-0 min-h-0 flex items-center justify-center">
+            <span className="text-[12.5px] italic text-white/20">
+              press run to grow the idea tree
+            </span>
+          </main>
+        ) : (
+          <main className="flex-1 min-w-0 grid grid-cols-2 divide-x divide-white/10">
+            <Column
+              label="vanilla"
+              items={nodes.vanilla}
+              finished={done.vanilla}
+              accent={false}
+              series={vSeries}
+              domain={domain}
+              onReceiptClick={onReceiptClick}
+            />
+            <Column
+              label="with prior"
+              items={nodes.prior}
+              finished={done.prior}
+              accent
+              series={pSeries}
+              domain={domain}
+              onReceiptClick={onReceiptClick}
+            />
+          </main>
+        )}
         <PriorPane
           server={SERVER}
           markdown={priorMd}
@@ -238,9 +304,11 @@ export default function App() {
 
       {/* ── status ticker ───────────────────────────────────── */}
       <footer className="h-8 shrink-0 border-t border-white/10 flex items-center px-5 gap-3 font-mono text-[11px] text-white/35 overflow-hidden whitespace-nowrap">
-        {status.run !== "system" && <span className="text-white/20">[{status.run}]</span>}
-        <span className="truncate">{status.text}</span>
+        {ticker.run !== "system" && <span className="text-white/20">[{ticker.run}]</span>}
+        <span className="truncate">{ticker.text}</span>
       </footer>
+
+      {briefOpen && brief && <BriefOverlay markdown={brief} onClose={() => setBriefOpen(false)} />}
     </div>
   );
 }

@@ -114,3 +114,102 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.12) transparent;
 }
+
+/* tree canvas: the currently-expanding idea breathes */
+@keyframes tree-pulse {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    box-shadow: 0 0 10px 0 color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    box-shadow: 0 0 2px 0 transparent;
+  }
+}
+.tree-pulse {
+  animation: tree-pulse 1.8s ease-in-out infinite;
+}
+
+/* brief overlay: a typeset reading page */
+.brief-md {
+  font-family: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.8;
+  color: rgb(255 255 255 / 0.78);
+  overflow-wrap: break-word;
+}
+.brief-md h1 {
+  font-size: 27px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgb(255 255 255 / 0.95);
+  margin: 0 0 1.1em;
+}
+.brief-md h2 {
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.92);
+  margin: 2.2em 0 0.7em;
+}
+.brief-md h3 {
+  font-size: 16.5px;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.88);
+  margin: 1.8em 0 0.5em;
+}
+.brief-md p,
+.brief-md li {
+  margin: 0.85em 0;
+}
+.brief-md ul,
+.brief-md ol {
+  padding-left: 1.4em;
+  list-style: disc;
+}
+.brief-md blockquote {
+  border-left: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  padding-left: 1.1em;
+  margin: 1.4em 0;
+  font-style: italic;
+  font-size: 14.5px;
+  color: rgb(255 255 255 / 0.5);
+}
+.brief-md strong {
+  color: rgb(255 255 255 / 0.92);
+  font-weight: 600;
+}
+.brief-md em {
+  color: rgb(255 255 255 / 0.6);
+}
+.brief-md hr {
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  margin: 2.2em 0;
+}
+.brief-md a {
+  color: rgb(255 255 255 / 0.85);
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 0.25);
+  transition: color 120ms, text-decoration-color 120ms;
+}
+.brief-md a:hover {
+  color: var(--color-accent);
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+.brief-md code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: rgb(255 255 255 / 0.75);
+}
+.brief-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--color-accent) 80%, white);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  border-radius: 2px;
+  padding: 1px 5px;
+}

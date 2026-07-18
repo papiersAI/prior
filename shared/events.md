@@ -33,3 +33,29 @@ Mock mode fixture selection: `POST /api/run?fixture=kernel` replays
 `server/fixtures/demo-kernel-run.jsonl` (the kernel-optimization experiment race, which
 emits `{t:"metric"}` events). Without the query param, `/api/run` replays the default
 `server/fixtures/demo-run.jsonl` search-loop fixture, exactly as before.
+
+## Addendum: idea-tree events (`prior explore`)
+
+`POST /api/run` now accepts `{question:string, mode:"explore"|"pursue"}` (default
+`"explore"`). Non-mock explore spawns `node prior.mjs explore "<question>" --prior
+server/.prior-working.md`; `question` may be a task-file path (e.g.
+`bench/tasks/gpumode-cholesky.md`) — it is passed through verbatim as one argument.
+`mode:"pursue"` keeps the original dual-race command.
+
+Explore streams emit, in addition to `{t:"status"}` / `{t:"prior"}`:
+
+```
+{ t:"node", run:"tree", step:number,
+  node:{ id, parentId, kind:"root"|"seed"|"idea"|"evidence"|"eval",
+         text, detail?, score?, status?, depth?, receipts:[{ref,quote}], url? } }
+{ t:"update", nodeId, score, status }   // "frontier"|"expanding"|"expanded"|"pruned"
+{ t:"brief", markdown }                  // once, at the end
+```
+
+Scout events from the seed-reading phase also appear early with `run:"prior"`; the UI
+shows them only in the bottom ticker when a tree is on the canvas.
+
+Fixture keys: `?fixture=tree` → `server/fixtures/tree-cholesky.jsonl` (a real recorded
+explore run; if the file is absent, `/api/run` answers 409 with a message saying how to
+record it) · `?fixture=tree-synthetic` → `server/fixtures/tree-synthetic.jsonl` (hand-
+authored development/backup fixture) · `?fixture=ideate` → `server/fixtures/ideate-cholesky.jsonl`.
