@@ -196,6 +196,12 @@ async function main() {
     await cliIdeate(args.slice(1));
     return;
   }
+
+  if (cmd === 'explore') {
+    const { cliExplore } = await import('./engine/explore-cli.mjs');
+    await cliExplore(args.slice(1));
+    return;
+  }
   const outFlag = args.indexOf('--out');
   const outPath = resolve(outFlag > -1 ? args[outFlag + 1] : 'PRIOR.md');
   // A compiler is a prompt. This flag swaps the whole compiler.
