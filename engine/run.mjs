@@ -55,3 +55,46 @@ async function cliBench(args) {
   const res = await runDualBench({ getPrior, iters, emit });
   process.stderr.write(`\ndone. baseline ${res.baselineMs}ms → vanilla ${res.final.vanilla}ms (${res.speedup.vanilla}×) | prior ${res.final.prior}ms (${res.speedup.prior}×)\n`);
 }
+
+// The full pipeline: seed (prior) → scout fan-out → idea arsenal → dual experiment race.
+export async function cliPursue(args) {
+  const objective = args.find((a) => !a.startsWith('--'));
+  if (!objective) {
+    process.stderr.write('usage: prior pursue "objective" [--rounds 3] [--iters 5] [--prior PRIOR.md]\n');
+    process.exit(1);
+  }
+  const flag = (name, dflt) => {
+    const i = args.indexOf(name);
+    return i > -1 ? Number(args[i + 1]) : dflt;
+  };
+  const rounds = flag('--rounds', 3);
+  const iters = flag('--iters', 5);
+  const priorFlag = args.indexOf('--prior');
+  const priorPath = resolve(priorFlag > -1 ? args[priorFlag + 1] : 'PRIOR.md');
+  const getPrior = () => readFileSync(priorPath, 'utf8');
+
+  const emit = (ev) => {
+    process.stdout.write(JSON.stringify(ev) + '\n');
+    if (ev.t === 'node') {
+      const r = ev.node.receipts?.length ? `  [${ev.node.receipts.map((x) => x.ref).join(', ')}]` : '';
+      process.stderr.write(`  ${ev.run.padEnd(7)} ${ev.node.kind.padEnd(9)} ${ev.node.text.slice(0, 110)}${r}\n`);
+    } else if (ev.t === 'metric') {
+      process.stderr.write(`  ${ev.run.padEnd(7)} metric    iter ${ev.iter}: ${ev.value}ms\n`);
+    } else if (ev.t === 'divergence') {
+      process.stderr.write(`  ── technique divergence: ${(ev.value * 100).toFixed(0)}% ──\n`);
+    } else if (ev.t === 'status' && ev.run === 'system') {
+      process.stderr.write(`── ${ev.text} ──\n`);
+    }
+  };
+
+  const { scout, arsenalBlock } = await import('./scout.mjs');
+  const { runDualBench } = await import('./kernel-loop.mjs');
+
+  emit({ t: 'status', run: 'system', text: `phase 1/2 — scout: "${objective}"` });
+  const found = await scout({ objective, getPrior, rounds, emit });
+  process.stderr.write(`\nscout done: ${found.signals.length} signals, ${found.techniques.length} arsenal techniques\n\n`);
+
+  emit({ t: 'status', run: 'system', text: 'phase 2/2 — experiment race' });
+  const res = await runDualBench({ getPrior, iters, emit, arsenal: arsenalBlock(found.techniques) });
+  process.stderr.write(`\ndone. baseline ${res.baselineMs}ms → vanilla ${res.final.vanilla}ms (${res.speedup.vanilla}×) | prior+scout ${res.final.prior}ms (${res.speedup.prior}×)\n`);
+}

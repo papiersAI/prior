@@ -158,6 +158,12 @@ async function main() {
     await cliRun(args.slice(1));
     return;
   }
+
+  if (cmd === 'pursue') {
+    const { cliPursue } = await import('./engine/run.mjs');
+    await cliPursue(args.slice(1));
+    return;
+  }
   const outFlag = args.indexOf('--out');
   const outPath = resolve(outFlag > -1 ? args[outFlag + 1] : 'PRIOR.md');
   // A compiler is a prompt. This flag swaps the whole compiler.

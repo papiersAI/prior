@@ -43,7 +43,7 @@ const MORNING_SCHEMA = {
   required: ['questions'],
 };
 
-function systemPrompt(prior, benchSource) {
+function systemPrompt(prior, benchSource, arsenal) {
   const base = `You are one iteration of an autonomous kernel-optimization loop. The target is kernel.py, which must define attention(Q, K, V) — single-head causal attention. A fixed benchmark (bench.py, below) checks correctness against a float64 reference (rtol=2e-3, atol=1e-4 — float32 internals are acceptable) and times it; your mutation is KEPT only if best_ms improves, else auto-reverted.
 
 RULES: propose exactly ONE technique per iteration — the smallest change that tests ONE hypothesis. Isolate variables: bundled changes (e.g. JIT + tiling + precision in one shot) make the keep/revert signal uninterpretable, so they are forbidden even when you are confident; climb the ladder one rung at a time. Return the FULL replacement kernel.py. Keep the attention(Q, K, V) signature. numpy 2.4.6 and numba 0.66 are available; imports limited to numpy, numba, math. Max ~120 lines. No file/network I/O. A failed or reverted run is information — do not repeat a failed technique, escalate past it.
@@ -54,7 +54,10 @@ ${benchSource}
   if (!prior) {
     return `${base}\n\nYou have no information about the human you work for. Choose techniques as a neutral, capable performance engineer. "receipts" must be an empty array.`;
   }
-  return `${base}\n\nYou work for a specific human researcher. Their standing research prior — compiled from what they actually read, saved, highlighted, and annotated — is below. Let it steer WHICH techniques you try and in what order: prefer moves their curated material supports, honor their aversions.\n\nRECEIPTS RULE: when a specific line of the prior steered this technique choice, cite it — ref = the [hl_…]/[cnv_…]/[doc_…] id on that line if present, else a short verbatim fragment; quote = the prior line. Cite ONLY genuine steering; empty array otherwise. Never fabricate.\n\n=== THE PRIOR (PRIOR.md) ===\n${prior}\n=== END PRIOR ===`;
+  const arsenalSection = arsenal
+    ? `\n\nYour scout already explored the frontier for this objective, seeded by the researcher's prior. Its IDEA ARSENAL (ranked candidate techniques, each with provenance: discovered sources + the seed lines that led there) is below. Draw mutations from it before improvising — that is the point of the pipeline.\n\n=== IDEA ARSENAL ===\n${arsenal}\n=== END ARSENAL ===`
+    : '';
+  return `${base}\n\nYou work for a specific human researcher. Their standing research prior — compiled from what they actually read, saved, highlighted, and annotated — is below. Let it steer WHICH techniques you try and in what order: prefer moves their curated material supports, honor their aversions.\n\nRECEIPTS RULE: when a specific prior line, arsenal entry, or discovered source steered this technique choice, cite it — ref = the [hl_…]/[cnv_…]/[doc_…] id, or the source URL, or a short verbatim fragment; quote = the line/insight itself. Cite ONLY genuine steering; empty array otherwise. Never fabricate.\n\n=== THE PRIOR (PRIOR.md) ===\n${prior}\n=== END PRIOR ===${arsenalSection}`;
 }
 
 function historyBlock(lane) {
@@ -75,7 +78,7 @@ async function runBench(dir) {
   }
 }
 
-export async function runDualBench({ getPrior, iters = 5, emit }) {
+export async function runDualBench({ getPrior, iters = 5, emit, arsenal = null }) {
   const benchSource = readFileSync(join(REPO_ROOT, 'bench', 'bench.py'), 'utf8');
   const mkLane = (name) => {
     const dir = join(REPO_ROOT, 'runs', name);
@@ -105,7 +108,7 @@ export async function runDualBench({ getPrior, iters = 5, emit }) {
   const iterate = async (lane, usePrior, iter) => {
     const prior = usePrior ? getPrior() : null;
     const out = await completeJSON({
-      system: systemPrompt(prior, benchSource),
+      system: systemPrompt(prior, benchSource, usePrior ? arsenal : null),
       user: historyBlock(lane),
       schema: MUTATION_SCHEMA,
       maxTokens: 12000,
@@ -144,7 +147,7 @@ export async function runDualBench({ getPrior, iters = 5, emit }) {
   }
 
   const morning = await completeJSON({
-    system: systemPrompt(getPrior(), benchSource),
+    system: systemPrompt(getPrior(), benchSource, arsenal),
     user: `${historyBlock(lanes.prior)}\n\nThe run is ending. List 2-3 QUESTIONS FOR THE MORNING: judgment calls you faced where the prior was silent (e.g. precision tolerances, dependency policy like numba, how far to chase micro-optimizations) — one line each, answerable by the human in one line. Answers get appended to the prior so no future run asks again.`,
     schema: MORNING_SCHEMA,
     effort: 'low',

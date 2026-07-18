@@ -5,6 +5,11 @@ import PriorPane from "./components/PriorPane.jsx";
 const SERVER = "http://localhost:8787";
 const FIXTURE_QUESTION =
   "What should a 2-person team build to inject human research taste into autoresearch loops?";
+const KERNEL_QUESTION = "Make naive numpy attention as fast as possible on CPU";
+// pick the mock fixture via the page URL: http://localhost:5173/?fixture=kernel
+const FIXTURE = new URLSearchParams(window.location.search).get("fixture");
+
+const fmtSpeedup = (s) => (s >= 10 ? String(Math.round(s)) : s.toFixed(1));
 
 /* tween a number toward `target` for the divergence meter */
 function useTween(target, ms = 600) {
@@ -35,7 +40,10 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [connected, setConnected] = useState(false);
   const [paneOpen, setPaneOpen] = useState(true);
-  const [question, setQuestion] = useState(FIXTURE_QUESTION);
+  const [question, setQuestion] = useState(
+    FIXTURE === "kernel" ? KERNEL_QUESTION : FIXTURE_QUESTION
+  );
+  const [metrics, setMetrics] = useState({ vanilla: [], prior: [] }); // best_ms per iter
 
   const depthRef = useRef({}); // node id → tree depth
   const priorApi = useRef(null); // set by PriorPane: { jumpTo(receipt) }
@@ -58,6 +66,11 @@ export default function App() {
         setNodes((s) => ({ ...s, [ev.run]: [...s[ev.run], { ...n, depth, step: ev.step }] }));
       } else if (ev.t === "divergence") {
         setDivergence(ev.value);
+      } else if (ev.t === "metric") {
+        setMetrics((s) => ({
+          ...s,
+          [ev.run]: [...(s[ev.run] ?? []), { iter: ev.iter, value: ev.value }],
+        }));
       } else if (ev.t === "status") {
         setStatus({ run: ev.run, text: ev.text });
       } else if (ev.t === "prior") {
@@ -83,8 +96,12 @@ export default function App() {
     setNodes({ vanilla: [], prior: [] });
     setDone({ vanilla: false, prior: false });
     setDivergence(0);
+    setMetrics({ vanilla: [], prior: [] });
     setRunning(true);
-    await fetch(`${SERVER}/api/run`, {
+    const runUrl = FIXTURE
+      ? `${SERVER}/api/run?fixture=${encodeURIComponent(FIXTURE)}`
+      : `${SERVER}/api/run`;
+    await fetch(runUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
@@ -102,6 +119,18 @@ export default function App() {
 
   const shown = useTween(divergence);
   const pct = Math.round(shown * 100);
+
+  // experiment mode: metric events flip the headline to per-lane speedup vs baseline
+  const vSeries = metrics.vanilla.map((m) => m.value);
+  const pSeries = metrics.prior.map((m) => m.value);
+  const hasMetrics = vSeries.length + pSeries.length > 0;
+  const speedupOf = (arr) => (arr.length ? arr[0] / arr[arr.length - 1] : 1);
+  const vSpeed = useTween(speedupOf(vSeries));
+  const pSpeed = useTween(speedupOf(pSeries));
+  const allValues = [...vSeries, ...pSeries];
+  const domain = allValues.length
+    ? [Math.min(...allValues), Math.max(...allValues)]
+    : null;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0a0a0b] text-white select-text">
@@ -129,21 +158,45 @@ export default function App() {
           </button>
         </div>
 
-        {/* divergence meter — must read from the back of a room */}
-        <div className="flex flex-col items-center gap-1.5">
-          <span className="font-mono tabular-nums text-4xl font-semibold text-accent leading-none">
-            {pct}%
-          </span>
-          <div className="w-56 h-[3px] bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent transition-[width] duration-500 ease-out"
-              style={{ width: `${Math.min(100, shown * 100)}%` }}
-            />
+        {/* headline — must read from the back of a room */}
+        {hasMetrics ? (
+          /* experiment mode: per-lane speedup vs shared baseline */
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-baseline gap-3 font-mono tabular-nums leading-none">
+              <span className="text-sm text-white/40">vanilla</span>
+              <span className="text-4xl font-semibold text-white/80">
+                {fmtSpeedup(vSpeed)}×
+              </span>
+              <span className="text-2xl text-white/15 mx-1">|</span>
+              <span className="text-sm text-white/40">prior</span>
+              <span className="text-4xl font-semibold text-accent">
+                {fmtSpeedup(pSpeed)}×
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono tabular-nums text-xs text-white/45">{pct}%</span>
+              <span className="text-[9px] uppercase tracking-[0.28em] text-white/30">
+                technique divergence
+              </span>
+            </div>
           </div>
-          <span className="text-[10px] uppercase tracking-[0.3em] text-white/35">
-            trajectory divergence
-          </span>
-        </div>
+        ) : (
+          /* search mode: divergence meter, exactly as before */
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="font-mono tabular-nums text-4xl font-semibold text-accent leading-none">
+              {pct}%
+            </span>
+            <div className="w-56 h-[3px] bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent transition-[width] duration-500 ease-out"
+                style={{ width: `${Math.min(100, shown * 100)}%` }}
+              />
+            </div>
+            <span className="text-[10px] uppercase tracking-[0.3em] text-white/35">
+              trajectory divergence
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-end">
           {!connected && (
@@ -160,6 +213,8 @@ export default function App() {
             items={nodes.vanilla}
             finished={done.vanilla}
             accent={false}
+            series={vSeries}
+            domain={domain}
             onReceiptClick={onReceiptClick}
           />
           <Column
@@ -167,6 +222,8 @@ export default function App() {
             items={nodes.prior}
             finished={done.prior}
             accent
+            series={pSeries}
+            domain={domain}
             onReceiptClick={onReceiptClick}
           />
         </main>

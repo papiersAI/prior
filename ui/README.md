@@ -22,6 +22,17 @@ npm run dev
 
 Open http://localhost:5173. Press **run**.
 
+## Two fixtures
+
+- **Search loop** (default): open http://localhost:5173 — headline is the trajectory
+  divergence meter; replays `server/fixtures/demo-run.jsonl`.
+- **Kernel race** (experiment loop): open **http://localhost:5173/?fixture=kernel** — two
+  lanes optimize the same naive numpy attention kernel (propose mutation → benchmark →
+  keep/revert). Replays `server/fixtures/demo-kernel-run.jsonl`. The headline flips to
+  per-lane speedup vs baseline ("vanilla 19× | prior 85×"), divergence shrinks to a
+  secondary "technique divergence" stat, and each column header gets a log-scale best-ms
+  sparkline. Failed mutations ("correct:false — reverted") render struck-through.
+
 ## Demo beats
 
 - Steps 1–2 the columns mirror each other; from step 3 the right column pivots and the

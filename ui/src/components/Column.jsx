@@ -16,6 +16,45 @@ function domainOf(url) {
   }
 }
 
+const fmtMs = (v) => (v >= 100 ? `${Math.round(v)}ms` : `${v.toFixed(1)}ms`);
+
+/* best_ms over iters — log scale, shared domain across lanes, no axes */
+function Sparkline({ series, domain, accent }) {
+  if (!series || series.length < 2 || !domain) return null;
+  const W = 120;
+  const H = 24;
+  const P = 2.5;
+  const ly = (v) => Math.log(Math.max(v, 1e-9));
+  const lo = ly(domain[0]);
+  const hi = ly(domain[1]);
+  const span = hi - lo || 1;
+  const pts = series.map((v, i) => [
+    P + (i / (series.length - 1)) * (W - 2 * P),
+    P + ((hi - ly(v)) / span) * (H - 2 * P),
+  ]);
+  const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const [ex, ey] = pts[pts.length - 1];
+  return (
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      className={accent ? "text-accent" : "text-white/45"}
+      aria-hidden="true"
+    >
+      <path
+        d={d}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx={ex} cy={ey} r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 function ReceiptChip({ receipt, onClick }) {
   return (
     <span className="relative group inline-block align-middle">
@@ -52,8 +91,15 @@ function Node({ node, accent, onReceiptClick }) {
     );
   } else if (node.kind === "result") {
     const domain = node.url ? domainOf(node.url) : null;
+    const reverted = /revert/i.test(node.text);
     body = (
-      <span className="text-[12.5px] text-white/60">
+      <span
+        className={
+          reverted
+            ? "text-[12.5px] text-white/30 line-through decoration-white/25"
+            : "text-[12.5px] text-white/60"
+        }
+      >
         {node.text}
         {domain && (
           <span className="ml-2 font-mono text-[10.5px] text-white/30">{domain}</span>
@@ -80,13 +126,23 @@ function Node({ node, accent, onReceiptClick }) {
   );
 }
 
-export default function Column({ label, items, finished, accent, onReceiptClick }) {
+export default function Column({
+  label,
+  items,
+  finished,
+  accent,
+  series,
+  domain,
+  onReceiptClick,
+}) {
   const bodyRef = useRef(null);
 
   useEffect(() => {
     const el = bodyRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [items.length]);
+
+  const best = series?.length ? series[series.length - 1] : null;
 
   return (
     <section className="flex flex-col min-h-0 min-w-0">
@@ -95,6 +151,14 @@ export default function Column({ label, items, finished, accent, onReceiptClick 
           {label}
         </span>
         {finished && <span className="text-[10px] text-white/25 font-mono">done</span>}
+        {series?.length >= 2 && (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="font-mono tabular-nums text-[10px] text-white/35">
+              {fmtMs(best)}
+            </span>
+            <Sparkline series={series} domain={domain} accent={accent} />
+          </span>
+        )}
       </div>
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">
         {items.length === 0 && (

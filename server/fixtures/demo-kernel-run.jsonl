@@ -1,0 +1,54 @@
+{"t":"status","run":"system","text":"kernel race armed — same naive numpy attention baseline, correctness-gated mutations, keep/revert per iteration"}
+{"t":"node","run":"vanilla","step":0,"node":{"id":"kv00","parentId":null,"kind":"note","text":"baseline: naive triple-loop numpy attention — 2400.0ms (correctness reference)"}}
+{"t":"node","run":"prior","step":0,"node":{"id":"kp00","parentId":null,"kind":"note","text":"baseline: naive triple-loop numpy attention — 2400.0ms (correctness reference)"}}
+{"t":"metric","run":"vanilla","iter":0,"value":2400}
+{"t":"metric","run":"prior","iter":0,"value":2400}
+{"t":"divergence","value":0}
+{"t":"status","run":"prior","text":"PRIOR.md loaded — systems sub-thread weighted (speculative decoding, pipeline parallelism); § Aversions consulted per mutation"}
+{"t":"node","run":"vanilla","step":1,"node":{"id":"kv01","parentId":null,"kind":"direction","text":"mutation: replace the triple loop with numpy broadcasting (batched matmul)"}}
+{"t":"node","run":"prior","step":1,"node":{"id":"kp01","parentId":null,"kind":"direction","text":"mutation: replace the triple loop with numpy broadcasting (batched matmul)"}}
+{"t":"node","run":"vanilla","step":1,"node":{"id":"kv02","parentId":"kv01","kind":"result","text":"612ms ✓ kept (−75%)"}}
+{"t":"metric","run":"vanilla","iter":1,"value":612}
+{"t":"node","run":"prior","step":1,"node":{"id":"kp02","parentId":"kp01","kind":"result","text":"598ms ✓ kept (−75%)"}}
+{"t":"metric","run":"prior","iter":1,"value":598}
+{"t":"divergence","value":0.04}
+{"t":"node","run":"vanilla","step":2,"node":{"id":"kv03","parentId":null,"kind":"direction","text":"mutation: cast inputs and accumulators to float32"}}
+{"t":"node","run":"prior","step":2,"node":{"id":"kp03","parentId":null,"kind":"direction","text":"mutation: cast inputs and accumulators to float32"}}
+{"t":"node","run":"vanilla","step":2,"node":{"id":"kv04","parentId":"kv03","kind":"result","text":"205ms ✓ kept (−67%)"}}
+{"t":"metric","run":"vanilla","iter":2,"value":205}
+{"t":"node","run":"prior","step":2,"node":{"id":"kp04","parentId":"kp03","kind":"result","text":"182ms ✓ kept (−70%)"}}
+{"t":"metric","run":"prior","iter":2,"value":182}
+{"t":"divergence","value":0.08}
+{"t":"status","run":"vanilla","text":"iter 3: gains flattening — trying micro-optimizations"}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"kv05","parentId":null,"kind":"direction","text":"mutation: hoist the 1/sqrt(d) scaling out of the loop, multiply by reciprocal"}}
+{"t":"node","run":"prior","step":3,"node":{"id":"kp05","parentId":null,"kind":"direction","text":"mutation: collapse the matmul chain into a single einsum — one pass, no intermediate copies","receipts":[{"ref":"hl_horace_brrr","quote":"most of your runtime is memory movement, not flops — count bytes before you count flops"},{"ref":"§ Post-training, self-improvement & the stack","quote":"pipeline-parallelism internals — GPipe peak memory, 1F1B, DualPipe/Chimera bidirectional scheduling"}]}}
+{"t":"node","run":"vanilla","step":3,"node":{"id":"kv06","parentId":"kv05","kind":"result","text":"171ms ✓ kept (−17%)"}}
+{"t":"metric","run":"vanilla","iter":3,"value":171}
+{"t":"node","run":"prior","step":3,"node":{"id":"kp06","parentId":"kp05","kind":"result","text":"97ms ✓ kept (−47%)"}}
+{"t":"metric","run":"prior","iter":3,"value":97}
+{"t":"divergence","value":0.3}
+{"t":"node","run":"vanilla","step":4,"node":{"id":"kv07","parentId":null,"kind":"direction","text":"mutation: preallocate the output buffer, remove temporaries"}}
+{"t":"node","run":"prior","step":4,"node":{"id":"kp07","parentId":null,"kind":"direction","text":"mutation: cache-blocked tiling of QK^T with softmax computed per tile","receipts":[{"ref":"hl_flashattn","quote":"never materialize the full attention matrix — tile, and rescale the softmax online"}]}}
+{"t":"node","run":"vanilla","step":4,"node":{"id":"kv08","parentId":"kv07","kind":"result","text":"148ms ✓ kept (−13%)"}}
+{"t":"metric","run":"vanilla","iter":4,"value":148}
+{"t":"divergence","value":0.45}
+{"t":"node","run":"prior","step":4,"node":{"id":"kp08","parentId":"kp07","kind":"result","text":"correct:false — reverted (max abs err 3.1e-2 vs reference)"}}
+{"t":"node","run":"prior","step":4,"node":{"id":"kp09","parentId":"kp08","kind":"note","text":"reverted — per-tile softmax without the online rescale is wrong; keeping einsum @ 97ms. the receipt names the missing piece: rescale online"}}
+{"t":"metric","run":"prior","iter":4,"value":97}
+{"t":"status","run":"prior","text":"iter 4 failed the correctness gate — reverted; retrying tiling with the online rescale the receipt describes"}
+{"t":"divergence","value":0.55}
+{"t":"node","run":"vanilla","step":5,"node":{"id":"kv09","parentId":null,"kind":"direction","text":"mutation: fuse the causal mask into the score computation"}}
+{"t":"node","run":"prior","step":5,"node":{"id":"kp10","parentId":null,"kind":"direction","text":"mutation: numba @njit(parallel=True) over query blocks — spend the cores where the bytes move","receipts":[{"ref":"hl_horace_brrr","quote":"most of your runtime is memory movement, not flops — count bytes before you count flops"},{"ref":"hl_18b2433507282c58d893a1cd9c72f1a2","quote":"speculative decoding (DSpark), keeping the systems/efficiency sub-thread warm"}]}}
+{"t":"node","run":"vanilla","step":5,"node":{"id":"kv10","parentId":"kv09","kind":"result","text":"124ms ✓ kept (−16%)"}}
+{"t":"metric","run":"vanilla","iter":5,"value":124}
+{"t":"node","run":"prior","step":5,"node":{"id":"kp11","parentId":"kp10","kind":"result","text":"44ms ✓ kept (−55%)"}}
+{"t":"metric","run":"prior","iter":5,"value":44}
+{"t":"divergence","value":0.62}
+{"t":"node","run":"prior","step":6,"node":{"id":"kp12","parentId":null,"kind":"direction","text":"mutation: online-softmax tiling — single pass over KV with running max + rescale (the fix iter 4 was missing)","receipts":[{"ref":"hl_flashattn","quote":"never materialize the full attention matrix — tile, and rescale the softmax online"},{"ref":"hl_online_softmax","quote":"the running-max trick turns softmax into a streaming reduction"}]}}
+{"t":"node","run":"prior","step":6,"node":{"id":"kp13","parentId":"kp12","kind":"result","text":"28.4ms ✓ kept (−35%)"}}
+{"t":"metric","run":"prior","iter":6,"value":28.4}
+{"t":"divergence","value":0.7}
+{"t":"status","run":"system","text":"race complete — prior lane 85× vs vanilla 19×; technique divergence 0.70"}
+{"t":"node","run":"prior","step":7,"node":{"id":"kp14","parentId":null,"kind":"note","text":"question for the morning: the online-softmax kernel is within 2× of the numba ceiling — port to C/BLAS next, or is CPU the wrong target entirely?","receipts":[{"ref":"hl_ffae6284cfaddcfe813bb7106a97dbf5","quote":"How do we collect examples of this? — The core bottleneck is research intuition"}]}}
+{"t":"done","run":"vanilla"}
+{"t":"done","run":"prior"}
