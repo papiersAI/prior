@@ -288,7 +288,7 @@ export default function TreeCanvas({ nodes, onReceiptClick }) {
         {derived.rows.map(
           (row, depth) =>
             row && (
-              <div key={depth} className="relative mt-16 flex justify-center gap-8">
+              <div key={depth} className="relative mt-16 flex items-start justify-center gap-8">
                 {row.map((n) => (
                   <IdeaCard
                     key={n.id}
