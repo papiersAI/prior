@@ -43,7 +43,12 @@ function readBatch(ids, format, maxChars) {
   for (let i = 0; i < ids.length; i += 20) {
     const batch = ids.slice(i, i + 20);
     try {
-      const res = papiers(['read', ...batch, '--format', format, '--max-chars-per-item', String(maxChars)]);
+      const args = ['read', ...batch, '--format', format];
+      // --max-chars-per-item is only valid for content formats, not metadata
+      if (maxChars && ['auto', 'markdown', 'plain'].includes(format)) {
+        args.push('--max-chars-per-item', String(maxChars));
+      }
+      const res = papiers(args);
       out.push(...(res.items || []));
     } catch (e) {
       process.stderr.write(`  warn: read batch failed (${batch.length} ids): ${e.message}\n`);

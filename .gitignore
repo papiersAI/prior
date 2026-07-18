@@ -1,4 +1,6 @@
 node_modules/
+# raw library dumps (full highlight/conversation text) — never publish
+.prior/
 .env
 .env.*
 *.log
