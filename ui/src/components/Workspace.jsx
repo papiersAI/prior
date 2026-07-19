@@ -4,12 +4,17 @@ import SourceCard from "./SourceCard.jsx";
 function PriorSummary({ prior, onOpenPrior }) {
   if (!prior) return null;
   return (
-    <section className="prior-panel" aria-label="Your prior">
+    <section className="prior-panel" aria-label="Your research prior">
       <header className="prior-panel-heading">
-        <span>Your prior</span>
+        <span>Your research prior</span>
         <button type="button" onClick={() => onOpenPrior?.()}>Open PRIOR.md</button>
       </header>
-      {prior.stance && <p className="prior-stance">{prior.stance}</p>}
+      <p className="prior-stance">
+        Inspect or edit the sources, preferences, and aversions shaping the agent’s decisions.
+      </p>
+      <p className="prior-how">
+        PRIOR.md is compiled from your Papiers library. During exploration, the agent rereads it to select starting points, score ideas, and prune weak branches.
+      </p>
       {prior.threads.length > 0 && (
         <div className="prior-threads">
           {prior.threads.map((thread) => (

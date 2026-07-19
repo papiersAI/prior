@@ -343,15 +343,19 @@ a {
 }
 
 .prior-stance {
-  margin: 0 0 16px;
+  margin: 0 0 8px;
   font-family: var(--font-serif);
   font-size: 15px;
   line-height: 1.5;
   color: var(--ink);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+}
+
+.prior-how {
+  max-width: 660px;
+  margin: 0 0 18px;
+  color: var(--ink-mid);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .prior-threads {
