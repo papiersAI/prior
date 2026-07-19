@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { renderMarkdown } from "./safeMarkdown.js";
+import { renderPriorMarkdown } from "./safeMarkdown.js";
 import useModalFocus from "./useModalFocus.js";
 
 export default function PriorPane({ server, markdown, open, setOpen, apiRef, focusReceipt }) {
@@ -14,11 +14,11 @@ export default function PriorPane({ server, markdown, open, setOpen, apiRef, foc
   const closeRef = useRef(null);
   const pendingCaret = useRef(null);
 
-  const html = useMemo(() => {
+  const { html, refs } = useMemo(() => {
     try {
-      return renderMarkdown(markdown);
+      return renderPriorMarkdown(markdown);
     } catch {
-      return "";
+      return { html: "", refs: [] };
     }
   }, [markdown]);
 
@@ -27,6 +27,20 @@ export default function PriorPane({ server, markdown, open, setOpen, apiRef, foc
       jumpTo(receipt) {
         const container = viewRef.current;
         if (!container) return false;
+        // Ids render as superscript marks; resolve them by data-ref first.
+        if (receipt.ref && /^(doc|hl|cnv)_/.test(receipt.ref)) {
+          const mark = container.querySelector(`.prior-ref[data-ref="${CSS.escape(receipt.ref)}"]`);
+          if (mark) {
+            const block = mark.closest("p,li,h1,h2,h3,h4,blockquote") ?? mark;
+            setMissingReceipt(null);
+            block.scrollIntoView({ behavior: "smooth", block: "center" });
+            block.classList.remove("flash-line");
+            void block.offsetWidth;
+            block.classList.add("flash-line");
+            setTimeout(() => block.classList.remove("flash-line"), 1700);
+            return true;
+          }
+        }
         const candidates = [];
         if (receipt.quote) candidates.push(receipt.quote.replace(/^-\s*/, "").slice(0, 60));
         if (receipt.ref?.startsWith("§")) candidates.push(receipt.ref.replace(/^§\s*/, ""));
@@ -188,7 +202,34 @@ export default function PriorPane({ server, markdown, open, setOpen, apiRef, foc
             </footer>
           </div>
         ) : (
-          <div ref={viewRef} className="prior-md" dangerouslySetInnerHTML={{ __html: html }} />
+          <div ref={viewRef} className="prior-md">
+            <div
+              className="prior-md-body"
+              onClick={(event) => {
+                const ref = event.target.closest?.(".prior-ref")?.dataset.ref;
+                if (!ref) return;
+                const entry = viewRef.current?.querySelector(
+                  `.prior-footnotes [data-ref="${CSS.escape(ref)}"]`
+                );
+                if (!entry) return;
+                entry.scrollIntoView({ behavior: "smooth", block: "center" });
+                entry.classList.remove("flash-line");
+                void entry.offsetWidth;
+                entry.classList.add("flash-line");
+                setTimeout(() => entry.classList.remove("flash-line"), 1700);
+              }}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+            {refs.length > 0 && (
+              <footer className="prior-footnotes" aria-label="References">
+                {refs.map((ref, index) => (
+                  <span key={ref} data-ref={ref}>
+                    <b>{index + 1}</b> {ref}
+                  </span>
+                ))}
+              </footer>
+            )}
+          </div>
         )}
       </aside>
     </div>
