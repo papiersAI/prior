@@ -1,79 +1,130 @@
-# prior
+# Prior
 
-> Your research taste, compiled and injected into autoresearch loops. What you curate today steers what your agents explore — and validate — tonight.
+**Turn your Papiers library into guidance for autoresearch agents.**
 
-Built at the AutoResearch Summit & Build Session, AGI House — July 18, 2026.
+Prior reads the papers, highlights, conversations, and unread saves in your Papiers library, compiles them into an editable `PRIOR.md`, and uses that context to explore a research objective. Every proposed direction stays linked to the sources and judgments that informed it.
 
-## The idea
+Built at the AutoResearch Summit & Build Session at AGI House, July 18, 2026.
 
-Autoresearch loops don't lack intelligence — they lack *your* judgment. Every system in this space (Karpathy's AutoResearch, AlphaEvolve, ENPIRE) runs propose → test → keep, and in every one the scarce input is the same: which directions are worth compute. In the Karpathy Loop the one artifact the human still writes by hand is `program.md` — taste, compressed into sentences.
+## Why
 
-`prior` compiles that from data. And the data is bigger than you think: **you curate far more than you read.** Every save is a judgment event — someone you trust surfaced it, your instinct flagged it — even if you never opened it. A working researcher's library is thousands of these events (this repo's author: 3,256 items, 3,224 never opened). That backlog is not clutter; it's an unexploited prior.
+Autoresearch systems are good at proposing and testing solutions. The harder question is what they should investigate in the first place.
 
-The researcher may or may not be a domain expert in any given objective. When they are, their curation is a head start to exploit; when they're not, the system covers the gap.
+Your research library already contains thousands of small decisions about what looked useful, surprising, or worth returning to. Prior makes those decisions available to an agent. It can use your saved work to find relevant starting points, search outward for evidence, and distinguish promising ideas from weak ones.
 
-## The pipeline: `prior pursue "<objective>"`
+An unread save is treated as a lead, not an endorsement. Highlights, annotations, conversations, and repeated source choices provide stronger evidence about what you actually believe.
 
-```
-your library (papiers CLI, read-only)
-      │
-      ▼
- prior compile ──► PRIOR.md            your taste as an inspectable, versioned,
-      │                                hand-editable file: stance, threads with
-      │                                momentum, aversions, technique tiers,
-      │                                trusted sources — every claim with receipts
-      ▼
- scout ─ ring 0: mine the unread backlog (reads what you saved but never read)
-       ─ ring 1+: fan out via Exa — recursive adjacency from your seed toward
-         the objective, harvesting signals with provenance
-      │
-      ▼
- idea arsenal                          ranked candidate techniques; each carries
-      │                                sources + the seed lines that led there
-      ▼
- experiment race                       two lanes optimize the same code against a
-      │                                fixed benchmark: propose ONE mutation → run
-      │                                → keep iff faster, revert honestly.
-      │                                Vanilla lane = control (no prior, no arsenal).
-      ▼
- morning report                        results + the judgment calls the loop
-                                       couldn't make — answer each in one line;
-                                       answers append to the prior. No future run
-                                       asks the same question twice.
+## What It Does
+
+1. **Compiles your library.** `prior compile` reads Papiers through its read-only CLI and writes an inspectable `PRIOR.md`.
+2. **Finds relevant sources.** For a research objective, Prior selects useful items from your library and follows them into papers, documentation, and code.
+3. **Explores ideas recursively.** It proposes directions, scores them, investigates the strongest candidates, generates sharper descendants, and prunes weak branches.
+4. **Shows its work.** The UI exposes the sources in use, the complete activity trace, evaluation rationales, score changes, and surviving idea lineages.
+5. **Produces a brief.** The strongest directions are distilled into a Markdown research brief with receipts back to your library and external evidence.
+
+## Demo
+
+Run the recorded exploration locally in two terminals.
+
+```sh
+# Terminal 1: repository root
+MOCK=1 node server/index.mjs
 ```
 
-**Provenance is the contract.** Every steered choice cites its chain: experiment ← arsenal idea ← discovered source ← the save/highlight of yours that seeded it. Receipts are `[hl_…]`/`[doc_…]`/`[cnv_…]` ids (resolvable via `papiers read <id>`) or source URLs. A claim without a receipt is worthless; the UI makes every link clickable.
-
-## PRIOR.md: the artifact
-
-The library is the **store**; PRIOR.md is a **materialized view** — regenerated each compile, committed to git, so `git diff PRIOR.md` is a legible trace of your thinking changing. Research changes in bursts, not daily: compile after curation sessions, and the git history shows exactly that.
-
-Evidence rules differ by claim type:
-- **Beliefs** need polarity — only your annotations and chat arguments count; a bare highlight is attention, not endorsement.
-- **Techniques** follow the save-is-the-signal rule: tiers are `tried` (used in a chat) > `endorsed` (annotated) > `saved` (bare save, including unread backlog items).
-- **Trusted sources** — the implicit trust graph from who you repeatedly save.
-
-The body is yours: edit it by hand, add an aversion mid-run and watch the loop prune a branch on the next step, citing your line. The compiler itself is just a prompt ([`prompts/compile.md`](prompts/compile.md)) — swap it with `--prompt` to change what a prior even is.
-
-## Commands
-
-```
-prior compile [--out PRIOR.md] [--prompt prompts/compile.md]   # library → PRIOR.md
-prior run "goal" [--steps 4]                                   # exploration loop (search tier)
-prior run --bench [--iters 5]                                  # experiment race only
-prior pursue "objective" [--rounds 3] [--iters 5]              # full pipeline
+```sh
+# Terminal 2
+cd ui
+npm install
+npm run dev
 ```
 
-UI: `node server/index.mjs` + `cd ui && npm run dev` → http://localhost:5173 — dual trajectory lanes, speedup sparklines, live-editable prior pane. `MOCK=1` replays recorded fixtures.
+Open [http://localhost:5173/?fixture=tree](http://localhost:5173/?fixture=tree), then select **Explore my library**.
 
-Requirements: [`papiers` CLI](https://www.npmjs.com/package/papiers) (authed), Node ≥ 22, Python 3 + numpy (numba optional) for the bench. LLM: `ANTHROPIC_API_KEY`, or none — falls back to `claude -p` via your Claude Code login. Search: `EXA_API_KEY` (mock mode without).
+The fixture replays a real exploration of a GPU MODE batched Cholesky task. Eleven unread saves seed 22 ideas. The agent investigates eight branches, prunes one, and produces a final brief.
 
-## Honest boundaries
+For the optional benchmark view, open [http://localhost:5173/?fixture=kernel](http://localhost:5173/?fixture=kernel).
 
-- **The A/B is real and the prior is allowed to lose.** Same loop, same tools; the only variable is the file. Divergence and the metric are measured, not narrated.
-- The prior's lift is largest on **open-ended objectives** (what to pursue, which approach family) and smallest on closed terminal grinds (a leaderboard with a perfect evaluator) — which is the thesis: taste matters most where evaluators are weakest.
-- The bundled benchmark (numpy causal attention, CPU) is a legible stand-in for the execution tier. Swap in a GPU sandbox; the contract doesn't change.
-- Write-back today appends answered questions to PRIOR.md (declared compile input). Roadmap: a `prior note` write path into the library itself, task-scoped views (`prior compile --for "<goal>"`), and a `prior watch` daemon that recompiles on curation events and auto-pursues promising deltas.
+## CLI
+
+Install the repository and expose the local `prior` command:
+
+```sh
+npm install
+npm link
+```
+
+Compile your Papiers library:
+
+```sh
+prior compile
+prior compile --out PRIOR.md --prompt prompts/compile.md
+```
+
+Explore a research objective:
+
+```sh
+prior explore "GPU MODE batched dense Cholesky" \
+  --expansions 6 \
+  --saves 12 \
+  --rounds 2 \
+  --prior PRIOR.md
+```
+
+The objective may also be a task file:
+
+```sh
+prior explore bench/tasks/gpumode-cholesky.md
+```
+
+Other workflows:
+
+```sh
+prior ideate "objective" --rounds 3 --saves 14    # one-shot idea brief
+prior run "research question" --steps 4           # research loop
+prior run --bench --iters 5                        # benchmark loop
+prior pursue "objective" --rounds 3 --iters 5     # scout, then benchmark
+```
+
+## Requirements
+
+- Node.js 22 or newer
+- An authenticated [`papiers` CLI](https://www.npmjs.com/package/papiers)
+- Claude Code for `prior compile` and as the default local model runner
+- `ANTHROPIC_API_KEY` to use the Anthropic API directly during agent loops
+- `EXA_API_KEY` for live web research; without it, the search layer uses mock results
+- Python 3 and NumPy for the optional benchmark loop; Numba is optional
+
+The main model can be changed with `PRIOR_MODEL`; reasoning effort can be changed with `PRIOR_EFFORT`.
+
+## Provenance
+
+Ideas and evaluations carry receipts rather than unsupported summaries:
+
+- `doc_...` identifies a saved document.
+- `hl_...` identifies a highlight or annotation.
+- `cnv_...` identifies a conversation.
+- HTTP URLs identify external papers, documentation, or code.
+
+Library receipts can be resolved with `papiers read <id>`. In the UI, library receipts open the working `PRIOR.md`; external evidence opens its source URL.
+
+`PRIOR.md` is ordinary Markdown. It can be read, edited, reviewed in a git diff, or replaced with another compiler prompt. During a live run, the engine rereads the working prior between steps, so an edit can change which directions survive.
+
+## Stack
+
+- React 19, Vite, Tailwind CSS 4, and `marked`
+- Node.js server with Server-Sent Events
+- Anthropic API or Claude Code for model execution
+- Exa for adjacent web research
+- Papiers CLI for read-only library access
+- Markdown files for priors and final briefs
+
+## Boundaries
+
+- Prior reads from Papiers; it does not modify the library.
+- A save is a relevance signal, not proof that the researcher agrees with its contents.
+- The recursive exploration view is designed for open-ended research decisions. The benchmark loop is a smaller example for tasks with a cheap, objective evaluator.
+- Mock mode replays recorded events through the same SSE contract as a live run.
+- Provenance makes an agent's reasoning inspectable; it does not make every conclusion correct.
 
 ## License
 
