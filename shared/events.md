@@ -60,3 +60,6 @@ Fixture keys: `?fixture=tree` → `server/fixtures/tree-cholesky.jsonl` (a real 
 explore run; if the file is absent, `/api/run` answers 409 with a message saying how to
 record it) · `?fixture=tree-synthetic` → `server/fixtures/tree-synthetic.jsonl` (hand-
 authored development/backup fixture) · `?fixture=ideate` → `server/fixtures/ideate-cholesky.jsonl`.
+
+`{ t:"funnel", stages:[{label:string, n:number}] }` — the seed-selection narrowing funnel
+(e.g. library 3256 → relevant 40 → reading 12), emitted once during the scout's ring 0.

@@ -45,8 +45,8 @@ export async function selectBacklog(objective, docs, { max = 8 } = {}) {
     .join('\n');
   const out = await completeJSON({
     system:
-      'You select items from a researcher\'s library that are relevant to an objective. Strongly prefer UNREAD saves — the researcher saved them as promising and never read them; mining that backlog is the point. Return ONLY ids that appear in the list, best first.',
-    user: `OBJECTIVE: ${objective}\n\nLIBRARY (${docs.length} items, "id | read-state | title" per line):\n${lines}\n\nReturn the ${max} most relevant ids.`,
+      'You select items from a researcher\'s library that are relevant to an objective — engaged or unread alike (an unread save still carries judgment: they flagged it as promising). Return ONLY ids that appear in the list, best first.',
+    user: `OBJECTIVE: ${objective}\n\nLIBRARY (${docs.length} items, "id | read-state | title" per line):\n${lines}\n\nReturn up to ${max} relevant ids, ranked best first.`,
     schema: {
       type: 'object',
       additionalProperties: false,

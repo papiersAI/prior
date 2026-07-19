@@ -96,8 +96,17 @@ export async function scout({ objective, getPrior, rounds = 3, emit, search = ex
       const docs = listAllDocs();
       const unread = docs.filter((d) => !d.engaged).length;
       emit({ t: 'status', run: 'prior', text: `library: ${docs.length} items, ${unread} unread saves` });
-      const ids = await selectBacklog(objective, docs, { max: libraryMax });
-      const excerpts = readDocs(ids);
+      const relevant = await selectBacklog(objective, docs, { max: 40 });
+      const chosen = relevant.slice(0, libraryMax);
+      emit({
+        t: 'funnel',
+        stages: [
+          { label: 'library', n: docs.length },
+          { label: 'relevant', n: relevant.length },
+          { label: 'reading', n: chosen.length },
+        ],
+      });
+      const excerpts = readDocs(chosen);
       state.ring0 = excerpts;
       for (const e of excerpts) {
         node({ kind: 'result', text: `📚 unread save: ${e.title.slice(0, 100)}`, url: e.id });
