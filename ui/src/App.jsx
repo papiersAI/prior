@@ -1,10 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import BriefOverlay from "./components/BriefOverlay.jsx";
 import Column from "./components/Column.jsx";
 import InspectorPane from "./components/InspectorPane.jsx";
 import PriorPane from "./components/PriorPane.jsx";
+import Spine from "./components/Spine.jsx";
 import TrajectoryRail from "./components/TrajectoryRail.jsx";
 import TreeCanvas from "./components/TreeCanvas.jsx";
+import { ReadyWorkspace, ScoutStage } from "./components/Workspace.jsx";
+import { parsePrior } from "./components/priorModel.js";
 
 const SERVER = import.meta.env.VITE_PRIOR_SERVER ?? "http://localhost:8787";
 const PARAMS = new URLSearchParams(window.location.search);
@@ -43,13 +46,13 @@ function useTween(target, ms = 600) {
 function phaseFor({ running, brief, treeNodes, scoutNodes, activeNodeId, error }) {
   if (error) return "Run interrupted";
   if (brief) return "Exploration complete";
-  if (!running) return "Ready to explore";
+  if (!running) return null;
 
   const active = treeNodes.find((node) => node.id === activeNodeId);
   if (active) return `Deepening: ${active.text}`;
   if (treeNodes.some((node) => node.kind === "idea")) return "Growing the idea tree";
   if (scoutNodes.some((node) => node.kind === "direction")) return "Distilling candidate directions";
-  if (scoutNodes.length) return "Scouting the library and adjacent evidence";
+  if (scoutNodes.length) return "Reading the library";
   return "Starting exploration";
 }
 
@@ -71,6 +74,11 @@ export default function App() {
   const [paneOpen, setPaneOpen] = useState(false);
   const [followingLive, setFollowingLive] = useState(true);
   const [runError, setRunError] = useState("");
+  const [scoutStatus, setScoutStatus] = useState("");
+  const [funnelStages, setFunnelStages] = useState([]);
+  const [scoreNoteVisible, setScoreNoteVisible] = useState(false);
+  const scoreNoteShown = useRef(false);
+  const scoreNoteTimer = useRef(0);
   const [question, setQuestion] = useState(
     FIXTURE === "kernel" ? KERNEL_QUESTION : FIXTURE === "default" ? FIXTURE_QUESTION : TREE_QUESTION
   );
@@ -96,6 +104,10 @@ export default function App() {
       if (event.t !== "prior") {
         const traced = { ...event, _key: `event-${eventSequence.current++}`, _at: Date.now() };
         setActivity((current) => [...current, traced]);
+      }
+
+      if (event.t === "status") {
+        if (event.run === "prior" || event.run === "system") setScoutStatus(event.text ?? "");
       }
 
       if (event.t === "node") {
@@ -167,6 +179,8 @@ export default function App() {
         setRunError(event.text ?? "Run failed");
       } else if (event.t === "prior") {
         setPriorMd(event.markdown);
+      } else if (event.t === "funnel") {
+        setFunnelStages(Array.isArray(event.stages) ? event.stages : []);
       } else if (event.t === "done") {
         setDone((current) => {
           const next = { ...current, [event.run]: true };
@@ -202,6 +216,8 @@ export default function App() {
     setDivergence(0);
     setMetrics({ vanilla: [], prior: [] });
     setRunError("");
+    setScoutStatus("");
+    setFunnelStages([]);
     setRunning(true);
 
     const runUrl = FIXTURE
@@ -280,6 +296,62 @@ export default function App() {
   const allValues = [...vanillaSeries, ...priorSeries];
   const domain = allValues.length ? [Math.min(...allValues), Math.max(...allValues)] : null;
 
+  const priorInfo = useMemo(() => parsePrior(priorMd), [priorMd]);
+  const hasIdeas = treeNodes.some((node) => node.kind === "idea");
+  const scouting = !hasIdeas && (running || nodes.prior.length > 0);
+
+  // Journey spine: funnel stages from the engine when present, live counts otherwise.
+  const savesRead = nodes.prior.filter(
+    (node) => node.kind === "result" && /^(doc|hl|cnv)_/.test(node.url ?? "")
+  ).length;
+  const ideaCount = treeNodes.filter((node) => node.kind === "idea").length;
+  const prunedCount = treeNodes.filter(
+    (node) => node.kind === "idea" && node.status === "pruned"
+  ).length;
+  const bestScore = treeNodes.reduce(
+    (best, node) =>
+      node.kind === "idea" && node.status !== "pruned" && node.score != null
+        ? Math.max(best, node.score)
+        : best,
+    0
+  );
+  const spineSegments = [
+    { label: "library", value: priorInfo?.items ?? "3,256" },
+    ...funnelStages.map((stage) => ({
+      label: stage.label,
+      value: Number.isFinite(stage.n) ? stage.n.toLocaleString() : "—",
+    })),
+    {
+      label: "reading",
+      value: savesRead || "—",
+      pending: !savesRead,
+      active: running && scouting,
+    },
+    {
+      label: "ideas",
+      value: ideaCount || "—",
+      pending: !ideaCount,
+      active: running && hasIdeas,
+    },
+    { label: "pruned", value: ideaCount ? prunedCount : "—", pending: !ideaCount },
+    {
+      label: "best idea",
+      value: bestScore ? `${bestScore}/10` : "—",
+      pending: !bestScore,
+      active: !running && Boolean(brief),
+    },
+  ];
+  const showSpine = TREEISH && (running || activity.length > 0);
+
+  // First use only: explain the score once, for 15s, then never again.
+  useEffect(() => {
+    if (!hasIdeas || scoreNoteShown.current) return;
+    scoreNoteShown.current = true;
+    setScoreNoteVisible(true);
+    clearTimeout(scoreNoteTimer.current);
+    scoreNoteTimer.current = setTimeout(() => setScoreNoteVisible(false), 15_000);
+  }, [hasIdeas]);
+
   const phase = phaseFor({
     running,
     brief,
@@ -304,9 +376,8 @@ export default function App() {
             aria-label="Research objective"
           />
         </label>
-        {running && (
+        {phase && (
           <span className="header-phase" aria-live="polite">
-            <span className="phase-pulse" aria-hidden="true" />
             {phase}
           </span>
         )}
@@ -318,48 +389,63 @@ export default function App() {
             </span>
           )}
           {TREEISH && activity.length > 0 && (
-            <button className="quiet-button activity-action" type="button" onClick={() => setActivityOpen(true)}>
-              Activity <span>{activity.length}</span>
+            <button className="quiet-button" type="button" onClick={() => setActivityOpen(true)}>
+              Journal
             </button>
           )}
           {brief && (
-            <button className="quiet-button brief-action" type="button" onClick={() => {
+            <button className="quiet-button" type="button" onClick={() => {
               setActivityOpen(false);
               setBriefOpen(true);
             }}>
               Brief
             </button>
           )}
-          {(running || activity.length > 0 || !TREEISH) && (
-            <button
-              className={`run-button ${running ? "is-running" : ""}`}
-              type="button"
-              onClick={run}
-            >
-              {running ? "Stop" : "Explore"}
-            </button>
-          )}
+          <button
+            className={`run-button ${running ? "is-running" : ""}`}
+            type="button"
+            onClick={run}
+          >
+            {running ? "Stop" : "Run"}
+          </button>
         </div>
       </header>
 
       {runError && <div className="error-banner" role="alert">{runError}</div>}
 
+      {showSpine && <Spine segments={spineSegments} />}
+      {showSpine && scoreNoteVisible && (
+        <p className="spine-note">
+          Ideas are scored 1–10 by promise; the loop explores the most promising next.
+        </p>
+      )}
+
       {TREEISH ? (
-        <main className="tree-surface">
-          <TreeCanvas
-            nodes={treeNodes}
-            scoutNodes={nodes.prior}
-            question={question}
-            running={running}
-            activeNodeId={activeNodeId}
-            selected={selection}
-            followLive={followingLive}
-            onSelectNode={selectNode}
-            onSelectSource={selectSource}
-            onRun={run}
-            onResumeLive={resumeLive}
-            onPauseLive={pauseLive}
-          />
+        <main className={`tree-surface ${selection ? "has-sheet" : ""}`}>
+          {hasIdeas ? (
+            <TreeCanvas
+              nodes={treeNodes}
+              question={question}
+              running={running}
+              activeNodeId={activeNodeId}
+              selected={selection}
+              followLive={followingLive}
+              inspectorOpen={Boolean(selection)}
+              onSelectNode={selectNode}
+              onOpenBrief={brief ? () => setBriefOpen(true) : null}
+              onResumeLive={resumeLive}
+              onPauseLive={pauseLive}
+            />
+          ) : scouting ? (
+            <ScoutStage
+              scoutNodes={nodes.prior}
+              status={scoutStatus}
+              prior={priorInfo}
+              onSelectSource={selectSource}
+            />
+          ) : (
+            <ReadyWorkspace question={question} prior={priorInfo} onOpenPrior={openPrior} />
+          )}
         </main>
       ) : (
         <>
@@ -399,7 +485,7 @@ export default function App() {
 
       {TREEISH && activityOpen && (
         <div className="activity-layer">
-          <button className="activity-scrim" type="button" onClick={() => setActivityOpen(false)} aria-label="Close activity" />
+          <button className="activity-scrim" type="button" onClick={() => setActivityOpen(false)} aria-label="Close journal" />
           <TrajectoryRail
             activity={activity}
             nodes={treeNodes}

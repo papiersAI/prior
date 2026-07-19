@@ -19,7 +19,7 @@ export function describeActivity(item, nodes = []) {
       pruned: "Pruned",
       frontier: "Frontier",
     };
-    const score = item.score == null ? "" : ` · EV ${item.score}`;
+    const score = item.score == null ? "" : ` · ${item.score}/10`;
     return {
       kind: item.status ?? "update",
       label: labels[item.status] ?? "Updated",

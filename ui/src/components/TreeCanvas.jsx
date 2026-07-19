@@ -1,290 +1,358 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import SourceCard from "./SourceCard.jsx";
 import { buildTreeModel } from "./treeModel.js";
 
-function IdeaNode({ node, active, onPath, selected, onSelect, register }) {
-  const highSignal = node.score >= 8 && node.status === "expanded";
+const CARD_W = 232;
+const CARD_H = 76;
+const ROOT_W = 260;
+const ROOT_H = 84;
+const X_GAP = 26;
+const ROW_GAP = 64;
+const PAD_X = 48;
+const PAD_TOP = 40; // canvas top padding — keeps the root row clear of the spine
+const PAD_BOTTOM = 72;
 
+function clamp(value, low, high) {
+  return Math.max(low, Math.min(high, value));
+}
+
+// cubic-bezier(0.2, 0, 0, 1) sampled for rAF animations.
+function cubicBezier(p1x, p1y, p2x, p2y) {
+  const cx = 3 * p1x;
+  const bx = 3 * (p2x - p1x) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * p1y;
+  const by = 3 * (p2y - p1y) - cy;
+  const ay = 1 - cy - by;
+  const sampleX = (t) => ((ax * t + bx) * t + cx) * t;
+  const sampleY = (t) => ((ay * t + by) * t + cy) * t;
+  return (x) => {
+    let low = 0;
+    let high = 1;
+    let t = x;
+    for (let i = 0; i < 24; i += 1) {
+      const value = sampleX(t);
+      if (Math.abs(value - x) < 1e-4) break;
+      if (value < x) low = t;
+      else high = t;
+      t = (low + high) / 2;
+    }
+    return sampleY(t);
+  };
+}
+const settle = cubicBezier(0.2, 0, 0, 1);
+
+// Top-down layout: roots spread across the width, children nest beneath parents.
+function layoutTree(model) {
+  const positions = new Map();
+  if (!model.root) return { positions, width: 0, height: 0 };
+  let nextX = PAD_X;
+  const rowCursor = [];
+
+  function place(id, depth) {
+    const children = model.childrenBy.get(id) ?? [];
+    const isRoot = depth === 0;
+    const w = isRoot ? ROOT_W : CARD_W;
+    const h = isRoot ? ROOT_H : CARD_H;
+    const y = PAD_TOP + (isRoot ? 0 : ROOT_H + ROW_GAP + (depth - 1) * (CARD_H + ROW_GAP));
+    let x;
+    if (children.length === 0) {
+      x = Math.max(nextX, rowCursor[depth] ?? PAD_X);
+      nextX = x + w + X_GAP;
+    } else {
+      const xs = children.map((child) => place(child.id, depth + 1));
+      x = (Math.min(...xs) + Math.max(...xs)) / 2 + (isRoot ? (CARD_W - ROOT_W) / 2 : 0);
+      x = Math.max(x, rowCursor[depth] ?? PAD_X);
+    }
+    rowCursor[depth] = x + w + X_GAP;
+    positions.set(id, { x, y, w, h });
+    return x;
+  }
+
+  place(model.root.id, 0);
+
+  let maxX = 0;
+  let maxY = 0;
+  for (const pos of positions.values()) {
+    maxX = Math.max(maxX, pos.x + pos.w);
+    maxY = Math.max(maxY, pos.y + pos.h);
+  }
+  return { positions, width: maxX + PAD_X, height: maxY + PAD_BOTTOM };
+}
+
+// Curved connectors: one cubic bézier per edge, leaving the parent's lower
+// edge and entering the child's upper edge. No junction dots.
+function edgePath(parent, child) {
+  const x1 = parent.x + parent.w / 2;
+  const y1 = parent.y + parent.h;
+  const x2 = child.x + child.w / 2;
+  const y2 = child.y;
+  const mid = (y1 + y2) / 2;
+  return `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`;
+}
+
+// Two lines at card width ≈ 68 chars; cut on a word boundary so the CSS
+// clamp never has to break mid-word.
+function clipTitle(text = "", budget = 68) {
+  if (text.length <= budget) return text;
+  const cut = text.slice(0, budget + 1);
+  const at = cut.lastIndexOf(" ");
+  return (at > 20 ? cut.slice(0, at) : cut).replace(/[\s,;:.—–-]+$/, "") + "…";
+}
+
+function promiseBand(score) {
+  if (score == null) return "mid";
+  if (score >= 8) return "high";
+  if (score >= 6) return "mid";
+  return "low";
+}
+
+function IdeaCard({ node, pos, active, selected, flash, onSelect }) {
   return (
     <button
-      ref={register}
       type="button"
-      className={`idea-node ${active ? "is-active" : ""} ${onPath ? "is-on-path" : ""} ${selected ? "is-selected" : ""}`}
+      className={`idea-card ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${flash ? "is-flash" : ""} ${node.status === "pruned" ? "is-pruned" : ""}`}
+      style={{ left: pos.x, top: pos.y, width: pos.w, height: pos.h }}
       data-node-id={node.id}
-      data-kind="idea"
-      data-status={node.status ?? "frontier"}
-      data-signal={highSignal ? "high" : undefined}
+      data-promise={promiseBand(node.score)}
       aria-selected={selected}
       onClick={() => onSelect(node.id)}
     >
-      <span className="idea-joint" aria-hidden="true" />
-      <span className="idea-copy">
-        <strong>{node.text}</strong>
-        <span className="idea-meta">
-          {node.score != null && <b>EV {node.score}</b>}
-          {node.status === "expanding" && <span>Evaluating</span>}
-          {node.status === "pruned" && <span>Pruned</span>}
-          {highSignal && <span className="signal-label">High signal</span>}
-        </span>
-      </span>
+      <span className="idea-title">{clipTitle(node.text)}</span>
+      {node.score != null && <span className="idea-score">{node.score}/10</span>}
     </button>
-  );
-}
-
-function IdeaBranch({ node, model, activeNodeId, selectedId, onSelectNode, registerNode }) {
-  const children = model.childrenBy.get(node.id) ?? [];
-  const onPath = model.activeIds.has(node.id);
-
-  return (
-    <div className="idea-branch">
-      <div className={`branch-node ${children.length ? "has-children" : ""} ${onPath ? "is-on-path" : ""}`}>
-        <IdeaNode
-          node={node}
-          active={node.id === activeNodeId}
-          onPath={onPath}
-          selected={node.id === selectedId}
-          onSelect={onSelectNode}
-          register={(element) => registerNode(node.id, element)}
-        />
-      </div>
-      {children.length > 0 && (
-        <div className="branch-children">
-          {children.map((child) => (
-            <div
-              key={child.id}
-              className="branch-child"
-              data-edge-active={model.activeIds.has(child.id) ? "true" : "false"}
-              data-edge-pruned={child.status === "pruned" ? "true" : "false"}
-            >
-              <IdeaBranch
-                node={child}
-                model={model}
-                activeNodeId={activeNodeId}
-                selectedId={selectedId}
-                onSelectNode={onSelectNode}
-                registerNode={registerNode}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SourceShelf({ sources, heading, summary, selected, onSelectSource }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? sources : sources.slice(0, 5);
-  const remaining = sources.length - visible.length;
-
-  return (
-    <section className="source-shelf" aria-label="Sources selected from your library">
-      <div className="source-shelf-heading">
-        <span>{heading}</span>
-        <strong>{summary}</strong>
-      </div>
-      <div className="source-list">
-        {visible.map((source) => (
-          <SourceCard
-            key={source.id}
-            source={{
-              ref: source.ref ?? source.url ?? source.id,
-              text: source.text,
-              annotation: source.annotation,
-            }}
-            selected={selected?.kind === "source" && selected.node.id === (source.node ?? source).id}
-            onOpen={() => onSelectSource(source.node ?? source)}
-          />
-        ))}
-        {remaining > 0 && (
-          <button className="more-sources" type="button" onClick={() => setExpanded(true)}>
-            <strong>+{remaining}</strong>
-            <span>more sources</span>
-          </button>
-        )}
-        {expanded && sources.length > 5 && (
-          <button className="less-sources" type="button" onClick={() => setExpanded(false)}>
-            Show less
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function EmptyCanvas({ question, onRun }) {
-  return (
-    <div className="tree-empty-state">
-      <div className="empty-origin">
-        <strong>3,224 saves you never opened.</strong>
-        <span>Put them to work on</span>
-        <p>{question}</p>
-        <button type="button" onClick={onRun}>Explore my library</button>
-      </div>
-    </div>
   );
 }
 
 export default function TreeCanvas({
   nodes,
-  scoutNodes,
   question,
   running,
   activeNodeId,
   selected,
   followLive,
+  inspectorOpen,
   onSelectNode,
-  onSelectSource,
-  onRun,
+  onOpenBrief,
   onResumeLive,
   onPauseLive,
 }) {
-  const scroller = useRef(null);
-  const contentRef = useRef(null);
-  const nodeRefs = useRef(new Map());
+  const viewportRef = useRef(null);
+  const zoomRef = useRef(1);
+  const fitRaf = useRef(0);
   const wasRunning = useRef(running);
+  const flashTimer = useRef(0);
   const [zoom, setZoom] = useState(1);
+  const [flashId, setFlashId] = useState(null);
+
   const selectedId = selected?.kind === "node" ? selected.id : null;
-  const pathFocusId = activeNodeId ?? selectedId;
-  const model = useMemo(() => buildTreeModel(nodes, pathFocusId), [nodes, pathFocusId]);
-  const scoutSources = scoutNodes.filter((node) => node.kind === "result" && node.url);
-  const sourceByReceipt = new Map(scoutSources.map((node) => [node.url, node]));
-  for (const seed of model.seeds) sourceByReceipt.set(seed.url ?? seed.id, seed);
-  const librarySources = [...sourceByReceipt.entries()]
-    .filter(([ref]) => /^(doc|hl|cnv)_/.test(ref))
-    .map(([, source]) => source);
-  const focusedNode = model.byId.get(activeNodeId ?? selectedId);
-  const focusedEvidence = focusedNode ? model.evidenceBy.get(focusedNode.id) ?? [] : [];
-  const focusedSources = [];
-  const focusedRefs = new Set();
+  const model = useMemo(() => buildTreeModel(nodes, activeNodeId), [nodes, activeNodeId]);
+  const { positions, width, height } = useMemo(() => layoutTree(model), [model]);
 
-  for (const [index, receipt] of (focusedNode?.receipts ?? []).entries()) {
-    if (focusedRefs.has(receipt.ref)) continue;
-    focusedRefs.add(receipt.ref);
-    const matched = sourceByReceipt.get(receipt.ref);
-    const sourceNode = matched ?? {
-      id: `receipt-${focusedNode.id}-${index}`,
-      kind: "seed",
-      url: receipt.ref,
-      text: receipt.quote ?? receipt.ref,
+  const ideas = model.ideas;
+  const finished = !running && ideas.length > 0;
+  const ranked = useMemo(
+    () =>
+      [...ideas]
+        .filter((idea) => idea.status !== "pruned" && idea.score != null)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6),
+    [ideas]
+  );
+
+  const edges = [];
+  for (const idea of ideas) {
+    const parent = model.byId.get(idea.parentId);
+    const parentPos = positions.get(parent?.kind === "idea" ? parent.id : model.root?.id);
+    const childPos = positions.get(idea.id);
+    if (!parentPos || !childPos) continue;
+    const alive = running && model.activeIds.has(idea.id);
+    edges.push({ id: idea.id, d: edgePath(parentPos, childPos), alive });
+  }
+
+  function applyZoom(next) {
+    zoomRef.current = next;
+    setZoom(next);
+  }
+
+  // The viewport is already the remaining region: open sheets shrink the
+  // stage (margin/flex), they never draw over it.
+  function centerOn(nodeId, behavior = "smooth") {
+    const viewport = viewportRef.current;
+    const pos = positions.get(nodeId);
+    if (!viewport || !pos) return;
+    const scale = zoomRef.current;
+    const cx = (pos.x + pos.w / 2) * scale;
+    const cy = (pos.y + pos.h / 2) * scale;
+    viewport.scrollTo({
+      left: Math.max(0, cx - viewport.clientWidth / 2),
+      top: Math.max(0, cy - viewport.clientHeight / 2),
+      behavior,
+    });
+  }
+
+  // Camera: keep the followed node centered in the remaining viewport.
+  const followTarget = followLive ? activeNodeId : selectedId;
+  useEffect(() => {
+    if (!followTarget) return;
+    const raf = requestAnimationFrame(() => centerOn(followTarget));
+    return () => cancelAnimationFrame(raf);
+  }, [followTarget, inspectorOpen, positions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pinch / ctrl-scroll zooms around the cursor. Plain scroll pans natively.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      onPauseLive?.();
+      const previous = zoomRef.current;
+      const next = clamp(previous * Math.exp(-event.deltaY * 0.0022), 0.3, 2);
+      if (next === previous) return;
+      const rect = viewport.getBoundingClientRect();
+      const anchorX = event.clientX - rect.left;
+      const anchorY = event.clientY - rect.top;
+      const worldX = (viewport.scrollLeft + anchorX) / previous;
+      const worldY = (viewport.scrollTop + anchorY) / previous;
+      applyZoom(next);
+      requestAnimationFrame(() => {
+        viewport.scrollLeft = worldX * next - anchorX;
+        viewport.scrollTop = worldY * next - anchorY;
+      });
     };
-    focusedSources.push({
-      id: `receipt-${focusedNode.id}-${index}`,
-      ref: receipt.ref,
-      text: matched?.text ?? receipt.quote ?? receipt.ref,
-      annotation: receipt.quote,
-      node: sourceNode,
-    });
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  }, [onPauseLive]);
+
+  // Animated fit-to-bounds: 500ms, cubic-bezier(0.2, 0, 0, 1), against the
+  // remaining viewport (sheets shrink the stage, they never cover it).
+  function animateFit() {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    cancelAnimationFrame(fitRaf.current);
+    const targetZoom = clamp(
+      Math.min((viewport.clientWidth - 48) / width, (viewport.clientHeight - 24) / height, 1),
+      0.25,
+      1
+    );
+    const fromZoom = zoomRef.current;
+    const fromLeft = viewport.scrollLeft;
+    const fromTop = viewport.scrollTop;
+    const targetLeft = Math.max(0, (width * targetZoom - viewport.clientWidth) / 2);
+    const start = performance.now();
+    const tick = (time) => {
+      const progress = clamp((time - start) / 500, 0, 1);
+      const eased = settle(progress);
+      applyZoom(fromZoom + (targetZoom - fromZoom) * eased);
+      viewport.scrollLeft = fromLeft + (targetLeft - fromLeft) * eased;
+      viewport.scrollTop = fromTop + (0 - fromTop) * eased;
+      if (progress < 1) fitRaf.current = requestAnimationFrame(tick);
+    };
+    fitRaf.current = requestAnimationFrame(tick);
   }
 
-  for (const evidence of focusedEvidence) {
-    const ref = evidence.url ?? evidence.text;
-    if (focusedRefs.has(ref)) continue;
-    focusedRefs.add(ref);
-    focusedSources.push({
-      id: evidence.id,
-      ref,
-      text: evidence.text,
-      annotation: evidence.detail,
-      node: evidence,
-    });
-  }
-
-  const sources = focusedSources.length ? focusedSources : librarySources;
-  const sourceHeading = focusedSources.length ? "Evidence in play" : "From your library";
-  const sourceSummary = focusedSources.length
-    ? `${focusedSources.length} sources for this direction`
-    : `${librarySources.length} of 3,224 unread`;
-
+  // Run end: fit the whole tree into the remaining viewport.
   useEffect(() => {
-    if (!activeNodeId || !followLive) return;
-    nodeRefs.current.get(activeNodeId)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-  }, [activeNodeId, followLive]);
-
-  useEffect(() => {
-    if (wasRunning.current && !running && model.ideas.length) {
-      requestAnimationFrame(() => fitMap());
-    }
+    if (wasRunning.current && !running && ideas.length) animateFit();
     wasRunning.current = running;
-  }, [running, model.ideas.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => cancelAnimationFrame(fitRaf.current);
+  }, [running, ideas.length, width, height]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function registerNode(id, element) {
-    if (element) nodeRefs.current.set(id, element);
-    else nodeRefs.current.delete(id);
+  // After completion, re-fit when a sheet opens or closes (the stage resizes).
+  const wasInspectorOpen = useRef(inspectorOpen);
+  useEffect(() => {
+    if (finished && wasInspectorOpen.current !== inspectorOpen) animateFit();
+    wasInspectorOpen.current = inspectorOpen;
+  }, [inspectorOpen, finished]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function revealNode(id) {
+    onSelectNode(id);
+    clearTimeout(flashTimer.current);
+    setFlashId(id);
+    flashTimer.current = setTimeout(() => setFlashId(null), 1600);
+    requestAnimationFrame(() => centerOn(id));
   }
-
-  function fitMap() {
-    const viewport = scroller.current;
-    const content = contentRef.current;
-    if (!viewport || !content) return;
-    const availableWidth = Math.max(1, viewport.clientWidth - 24);
-    const availableHeight = Math.max(1, viewport.clientHeight - 24);
-    const naturalWidth = content.offsetWidth;
-    const naturalHeight = content.offsetHeight;
-    const next = Math.max(0.4, Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight));
-    setZoom(Math.round(next * 20) / 20);
-    requestAnimationFrame(() => viewport.scrollTo({ left: 0, top: 0, behavior: "smooth" }));
-  }
-
-  function changeZoom(delta) {
-    onPauseLive?.();
-    setZoom((current) => Math.max(0.4, Math.min(1.4, Math.round((current + delta) * 10) / 10)));
-  }
-
-  if (!model.root && !running) return <EmptyCanvas question={question} onRun={onRun} />;
 
   return (
     <section className="idea-map" aria-label="Recursive idea map">
-      <div className="map-controls">
-        <button type="button" onClick={() => changeZoom(-0.1)} aria-label="Zoom out" title="Zoom out">−</button>
-        <span className="zoom-value" aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <button type="button" onClick={() => changeZoom(0.1)} aria-label="Zoom in" title="Zoom in">+</button>
-        <button type="button" onClick={fitMap}>Fit</button>
-        {!followLive && activeNodeId && (
-          <button type="button" onClick={onResumeLive}>Follow current</button>
-        )}
-      </div>
-      <div ref={scroller} className="map-scroller" onWheel={onPauseLive} onPointerDown={onPauseLive}>
-        <div ref={contentRef} className="map-content" style={{ zoom }}>
-          {sources.length > 0 && (
-            <>
-              <SourceShelf
-                sources={sources}
-                heading={sourceHeading}
-                summary={sourceSummary}
-                selected={selected}
-                onSelectSource={onSelectSource}
+      <div
+        ref={viewportRef}
+        className="canvas-viewport"
+        onPointerDown={onPauseLive}
+      >
+        <div className="canvas-world" style={{ zoom, width, height }}>
+          <svg className="edge-layer" width={width} height={height} aria-hidden="true">
+            {edges.map((edge) => (
+              <path
+                key={edge.id}
+                d={edge.d}
+                fill="none"
+                stroke={edge.alive ? "#C75B2E" : "#D8D4CC"}
+                strokeOpacity={edge.alive ? 0.4 : 1}
+                strokeWidth="1"
               />
-              <span className="source-thread" aria-hidden="true" />
-            </>
-          )}
-          <div className="tree-flow">
-            <div className={`objective-node ${model.activeIds.size ? "has-active-path" : ""}`} data-kind="root" data-node-id={model.root?.id}>
-              <strong>{model.root?.text ?? question}</strong>
+            ))}
+          </svg>
+
+          {model.root && positions.get(model.root.id) && (
+            <div
+              className="root-card"
+              style={{
+                left: positions.get(model.root.id).x,
+                top: positions.get(model.root.id).y,
+                width: ROOT_W,
+                height: ROOT_H,
+              }}
+            >
+              <span className="idea-title">{model.root.text ?? question}</span>
             </div>
-            {model.rootIdeas.length > 0 && (
-              <div className="root-branches">
-                {model.rootIdeas.map((idea) => (
-                  <div
-                    key={idea.id}
-                    className="root-child"
-                    data-edge-active={model.activeIds.has(idea.id) ? "true" : "false"}
-                  >
-                    <IdeaBranch
-                      node={idea}
-                      model={model}
-                      activeNodeId={activeNodeId}
-                      selectedId={selectedId}
-                      onSelectNode={onSelectNode}
-                      registerNode={registerNode}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
+
+          {ideas.map((idea) => {
+            const pos = positions.get(idea.id);
+            if (!pos) return null;
+            return (
+              <IdeaCard
+                key={idea.id}
+                node={idea}
+                pos={pos}
+                active={running && idea.id === activeNodeId}
+                selected={idea.id === selectedId}
+                flash={idea.id === flashId}
+                onSelect={onSelectNode}
+              />
+            );
+          })}
         </div>
       </div>
+
+      {finished && ranked.length > 0 && (
+        <aside className="outcome-panel" aria-label="Outcome">
+          <div className="shelf-heading">
+            <span>Outcome</span>
+            <strong>{ranked.length} surviving directions</strong>
+          </div>
+          <div className="outcome-list">
+            {ranked.map((idea) => (
+              <button key={idea.id} type="button" onClick={() => revealNode(idea.id)}>
+                <span>{idea.text}</span>
+                <strong>
+                  {idea.initialScore != null && idea.initialScore !== idea.score && (
+                    <i>{idea.initialScore} → </i>
+                  )}
+                  {idea.score}/10
+                </strong>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
+
+      {!followLive && running && activeNodeId && (
+        <button className="follow-current" type="button" onClick={onResumeLive}>
+          Follow current
+        </button>
+      )}
     </section>
   );
 }

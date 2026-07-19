@@ -2,66 +2,47 @@ import React from "react";
 import { domainOf, isExternalSource } from "./sourceModel.js";
 
 function cleanSourceText(text = "") {
-  return text
+  let cleaned = text
     .replace(/^\s*[^\w@]+\s*/u, "")
     .replace(/^unread save:\s*/i, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\s+/g, " ")
     .replace(/\.{2,}\s*$/, "")
     .trim();
+  // Upstream truncation can cut mid-word; end on a word boundary instead.
+  if (cleaned.length > 40 && !/[.!?…)"']$/.test(cleaned)) {
+    cleaned = cleaned.replace(/\s+\S{1,12}$/, "") + "…";
+  }
+  return cleaned;
 }
 
 function parseSavedPost(text = "") {
   const cleaned = cleanSourceText(text);
   const match = /^@([\w]+):\s*/u.exec(cleaned);
-  if (!match) return { handle: null, body: cleaned };
+  if (!match) return { author: null, body: cleaned };
   return {
-    handle: match[1],
+    author: match[1],
     body: cleaned.slice(match[0].length).trim(),
   };
 }
 
-function externalKind(ref = "") {
-  const domain = domainOf(ref);
-  if (/github\.com$/i.test(domain)) return "Code";
-  if (/\.pdf(?:$|\?)/i.test(ref) || /arxiv|netlib|sciencedirect|nsf\.gov/i.test(domain)) return "Paper";
-  if (/nvidia\.com$/i.test(domain)) return "Docs";
-  return "Web";
-}
-
+// One card grammar: author line (sans, quiet) + one-line serif title.
+// No raw identifiers anywhere on the card.
 function CardContent({ source }) {
-  const external = isExternalSource(source.ref);
-  if (external) {
-    const domain = domainOf(source.ref);
+  if (isExternalSource(source.ref)) {
     return (
       <>
-        <span className="source-card-topline">
-          <span className="source-favicon" aria-hidden="true">{domain.charAt(0).toUpperCase()}</span>
-          <span className="source-domain">{domain}</span>
-          <span className="source-kind">{externalKind(source.ref)}</span>
-        </span>
-        <strong className="source-card-title">{cleanSourceText(source.text) || domain}</strong>
-        {source.annotation && source.annotation !== source.text && (
-          <span className="source-marginalia">{source.annotation}</span>
-        )}
+        <span className="source-author">{domainOf(source.ref)}</span>
+        <span className="source-title">{cleanSourceText(source.text) || domainOf(source.ref)}</span>
       </>
     );
   }
 
   const post = parseSavedPost(source.text);
-  const identity = post.handle ? `@${post.handle}` : "Saved source";
   return (
     <>
-      <span className="source-card-topline">
-        <span className="source-avatar" aria-hidden="true">
-          {(post.handle ?? "S").charAt(0).toUpperCase()}
-        </span>
-        <span className="source-author">{identity}</span>
-        <span className="source-kind">Unread save</span>
-      </span>
-      <strong className="source-card-title">{post.body || cleanSourceText(source.text)}</strong>
-      {source.annotation && source.annotation !== source.text && (
-        <span className="source-marginalia">{source.annotation}</span>
-      )}
-      <span className="source-receipt">{source.ref}</span>
+      <span className="source-author">{post.author ?? "From your library"}</span>
+      <span className="source-title">{post.body || cleanSourceText(source.text) || "Saved item"}</span>
     </>
   );
 }

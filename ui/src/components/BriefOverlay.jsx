@@ -7,9 +7,10 @@ export default function BriefOverlay({ markdown, onClose, onReceiptClick }) {
   const dialogRef = useRef(null);
   useModalFocus({ open: true, containerRef: dialogRef, initialRef: closeRef, onClose });
 
+  // The title is the objective alone.
   const html = useMemo(() => {
     try {
-      return renderBriefMarkdown(markdown);
+      return renderBriefMarkdown(markdown.replace(/^#\s*Exploration Brief\s*[—–-]\s*/i, "# "));
     } catch {
       return "";
     }
@@ -23,13 +24,9 @@ export default function BriefOverlay({ markdown, onClose, onReceiptClick }) {
   }
 
   return (
-    <div ref={dialogRef} className="brief-reader" role="dialog" aria-modal="true" aria-labelledby="brief-title" tabIndex={-1}>
+    <div ref={dialogRef} className="brief-reader" role="dialog" aria-modal="true" aria-label="Idea brief" tabIndex={-1}>
       <header className="brief-header">
-        <div>
-          <span>Exploration artifact</span>
-          <strong id="brief-title">Idea brief</strong>
-        </div>
-        <button ref={closeRef} type="button" onClick={onClose}>Back to idea map</button>
+        <button ref={closeRef} type="button" onClick={onClose}>Back to the tree</button>
       </header>
       <div className="brief-scroll">
         <article

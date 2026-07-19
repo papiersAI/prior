@@ -37,7 +37,7 @@ function WorkingSet({ activity, nodes, onSelect, onSelectNode }) {
             return (
               <button key={item.id} type="button" onClick={() => onSelectNode(item.id)}>
                 <span>{item.text}</span>
-                <strong>{showingValidated ? `EV ${item.score}` : `Frontier ${item.score}`}</strong>
+                <strong>{item.score}/10</strong>
               </button>
             );
           }
@@ -82,11 +82,10 @@ export default function TrajectoryRail({ activity, nodes, running, selected, onC
     <aside ref={railRef} className="trajectory-rail" role="dialog" aria-modal="true" aria-label="Agent activity" tabIndex={-1}>
       <header className="activity-header">
         <div>
-          <strong>Activity</strong>
-          <span>{visible.length}</span>
+          <strong>Journal</strong>
           {running && <i aria-label="Live" />}
         </div>
-        <button ref={closeRef} type="button" onClick={onClose} aria-label="Close activity" title="Close">×</button>
+        <button ref={closeRef} type="button" onClick={onClose} aria-label="Close journal" title="Close">×</button>
       </header>
       <WorkingSet
         activity={visible}

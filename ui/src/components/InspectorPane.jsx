@@ -69,6 +69,7 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
             onOpen={onReceiptClick}
           />
         )}
+        {node.url && <p className="inspector-id">{node.url}</p>}
       </>
     );
   }
@@ -81,17 +82,22 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
       </div>
       <h2 id="inspector-title">{node.text}</h2>
 
-      <div className="score-history" aria-label="Expected value score history">
-        <div>
-          <span>EV</span>
-          <strong>{node.score ?? "—"}</strong>
-        </div>
+      <div className="score-reading" aria-label="Promise score">
+        <strong>{node.score != null ? `${node.score}/10` : "—"}</strong>
         <p>
-          {evaluatedCheckpoint
-            ? `${generatedScore} → ${evaluatedCheckpoint.score} after assessment`
-            : node.status === "expanding"
-              ? `Generated at ${generatedScore}; assessing now`
-              : generatedScore == null ? "Not yet scored" : `Generated at ${generatedScore}`}
+          {node.status === "expanding"
+            ? "Exploring now — highest-promise idea left on the frontier."
+            : evaluatedCheckpoint && evaluatedCheckpoint.stage === "pruned"
+              ? generatedScore === evaluatedCheckpoint.score
+                ? `Promise ${evaluatedCheckpoint.score}/10 after weighing the evidence — branch pruned.`
+                : `Promise revised ${generatedScore} → ${evaluatedCheckpoint.score}/10 after weighing the evidence — branch pruned.`
+              : evaluatedCheckpoint
+                ? generatedScore === evaluatedCheckpoint.score
+                  ? `Promise held at ${evaluatedCheckpoint.score}/10 after weighing the evidence.`
+                  : `Promise revised ${generatedScore} → ${evaluatedCheckpoint.score}/10 after weighing the evidence.`
+                : generatedScore == null
+                  ? "Not yet scored."
+                  : "The loop's estimate of how much this idea is worth pursuing."}
         </p>
       </div>
 
@@ -165,12 +171,14 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
             {children.map((child) => (
               <button key={child.id} type="button" onClick={() => onSelectNode(child.id)}>
                 <span>{child.text}</span>
-                <strong>EV {child.score}</strong>
+                <strong>{child.score != null ? `${child.score}/10` : ""}</strong>
               </button>
             ))}
           </div>
         </InspectorSection>
       )}
+
+      <p className="inspector-id">{node.id}</p>
     </>
   );
 }
