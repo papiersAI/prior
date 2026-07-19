@@ -1,39 +1,26 @@
 import React, { useMemo } from "react";
-import { describeActivity } from "./TrajectoryRail.jsx";
+import SourceCard from "./SourceCard.jsx";
+import { describeActivity } from "./activityModel.js";
+import { isExternalSource } from "./sourceModel.js";
 import { buildTreeModel, lineageFor } from "./treeModel.js";
 
-function domainOf(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
+function sourceForReceipt(receipt, model) {
+  const seed = model?.seeds.find((candidate) => (candidate.url ?? candidate.id) === receipt.ref);
+  const text = seed?.text ?? receipt.quote ?? receipt.ref;
+  return {
+    ref: receipt.ref,
+    text,
+    annotation: receipt.quote && receipt.quote !== text ? receipt.quote : null,
+  };
 }
 
-function isExternal(ref = "") {
-  return /^https?:\/\//.test(ref);
-}
-
-function ReceiptRow({ receipt, onReceiptClick }) {
-  const external = isExternal(receipt.ref);
-  const content = (
-    <>
-      <span className="receipt-source">{external ? domainOf(receipt.ref) : receipt.ref}</span>
-      {receipt.quote && <span className="receipt-quote">{receipt.quote}</span>}
-    </>
-  );
-
-  if (external) {
-    return (
-      <a className="inspector-receipt" href={receipt.ref} target="_blank" rel="noreferrer">
-        {content}
-      </a>
-    );
-  }
+function ReceiptCard({ receipt, model, onReceiptClick }) {
   return (
-    <button className="inspector-receipt" type="button" onClick={() => onReceiptClick(receipt)}>
-      {content}
-    </button>
+    <SourceCard
+      compact
+      source={sourceForReceipt(receipt, model)}
+      onOpen={onReceiptClick}
+    />
   );
 }
 
@@ -55,8 +42,8 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
   const children = model.childrenBy.get(node.id) ?? [];
   const lineage = lineageFor(node, model.byId);
   const directReceipts = node.receipts ?? [];
-  const libraryReceipts = directReceipts.filter((receipt) => !isExternal(receipt.ref));
-  const externalReceipts = directReceipts.filter((receipt) => isExternal(receipt.ref));
+  const libraryReceipts = directReceipts.filter((receipt) => !isExternalSource(receipt.ref));
+  const externalReceipts = directReceipts.filter((receipt) => isExternalSource(receipt.ref));
   const checkpoints = node.scoreCheckpoints ?? (node.score == null ? [] : [{ score: node.score, status: node.status ?? "frontier", stage: "generated" }]);
   const generatedScore = checkpoints[0]?.score;
   const evaluatedCheckpoint = [...checkpoints].reverse().find((checkpoint) => checkpoint.stage === "evaluated" || checkpoint.stage === "pruned");
@@ -65,7 +52,6 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
   if (node.kind === "root") {
     return (
       <>
-        <div className="inspector-kicker"><span>Research objective</span></div>
         <h2 id="inspector-title">{node.text}</h2>
       </>
     );
@@ -74,12 +60,14 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
   if (node.kind === "seed") {
     return (
       <>
-        <div className="inspector-kicker"><span>Unread save selected as seed</span></div>
+        <div className="inspector-kicker"><span>From your library</span></div>
         <h2 id="inspector-title">{node.text}</h2>
         {node.url && (
-          <InspectorSection title="Library receipt">
-            <ReceiptRow receipt={{ ref: node.url, quote: node.text }} onReceiptClick={onReceiptClick} />
-          </InspectorSection>
+          <SourceCard
+            compact
+            source={{ ref: node.url, text: node.text }}
+            onOpen={onReceiptClick}
+          />
         )}
       </>
     );
@@ -95,15 +83,15 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
 
       <div className="score-history" aria-label="Expected value score history">
         <div>
-          <span>Expected value</span>
+          <span>EV</span>
           <strong>{node.score ?? "—"}</strong>
         </div>
         <p>
           {evaluatedCheckpoint
-            ? `Generated ${generatedScore}; after deep dive ${evaluatedCheckpoint.score} (${evaluatedCheckpoint.score === generatedScore ? "retained" : evaluatedCheckpoint.score > generatedScore ? "raised" : "lowered"})`
+            ? `${generatedScore} → ${evaluatedCheckpoint.score} after assessment`
             : node.status === "expanding"
-              ? `Generated ${generatedScore}; deep dive in progress`
-              : `Generated EV ${generatedScore}; awaiting deep dive`}
+              ? `Generated at ${generatedScore}; assessing now`
+              : generatedScore == null ? "Not yet scored" : `Generated at ${generatedScore}`}
         </p>
       </div>
 
@@ -117,7 +105,7 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
                 ) : (
                   <span>{ancestor.text}</span>
                 )}
-                {index < lineage.length - 1 && <b aria-hidden="true">/</b>}
+                {index < lineage.length - 1 && <b aria-hidden="true">›</b>}
               </React.Fragment>
             ))}
           </div>
@@ -131,7 +119,7 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
       )}
 
       {evaluations.length > 0 && (
-        <InspectorSection title="Evaluator rationale" count={evaluations.length}>
+        <InspectorSection title="Assessment" count={evaluations.length}>
           <div className="evaluation-list">
             {evaluations.map((evaluation) => (
               <article key={evaluation.id}>
@@ -147,22 +135,23 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
         <InspectorSection title="From your library" count={libraryReceipts.length}>
           <div className="receipt-list">
             {libraryReceipts.map((receipt, index) => (
-              <ReceiptRow key={`${receipt.ref}-${index}`} receipt={receipt} onReceiptClick={onReceiptClick} />
+              <ReceiptCard key={`${receipt.ref}-${index}`} receipt={receipt} model={model} onReceiptClick={onReceiptClick} />
             ))}
           </div>
         </InspectorSection>
       )}
 
       {(externalReceipts.length > 0 || evidence.length > 0) && (
-        <InspectorSection title="Discovered evidence" count={externalReceipts.length + evidence.length}>
+        <InspectorSection title="Evidence" count={externalReceipts.length + evidence.length}>
           <div className="receipt-list">
             {externalReceipts.map((receipt, index) => (
-              <ReceiptRow key={`${receipt.ref}-${index}`} receipt={receipt} onReceiptClick={onReceiptClick} />
+              <ReceiptCard key={`${receipt.ref}-${index}`} receipt={receipt} model={model} onReceiptClick={onReceiptClick} />
             ))}
             {evidence.map((source) => (
-              <ReceiptRow
+              <ReceiptCard
                 key={source.id}
                 receipt={{ ref: source.url ?? source.text, quote: source.text }}
+                model={model}
                 onReceiptClick={onReceiptClick}
               />
             ))}
@@ -171,7 +160,7 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
       )}
 
       {children.length > 0 && (
-        <InspectorSection title="Sharper children" count={children.length}>
+        <InspectorSection title="Next directions" count={children.length}>
           <div className="child-idea-list">
             {children.map((child) => (
               <button key={child.id} type="button" onClick={() => onSelectNode(child.id)}>
@@ -186,7 +175,7 @@ function NodeInspector({ node, model, onReceiptClick, onSelectNode }) {
   );
 }
 
-function ActivityInspector({ item, nodes, onReceiptClick, onSelectNode }) {
+function ActivityInspector({ item, nodes, model, onReceiptClick, onSelectNode }) {
   const description = describeActivity(item, nodes);
   const longOutput = description.text.length > 180;
   const node = item.node;
@@ -213,20 +202,11 @@ function ActivityInspector({ item, nodes, onReceiptClick, onSelectNode }) {
         </InspectorSection>
       )}
 
-      {item.t === "node" && item.run === "prior" && node?.kind === "direction" && (
-        <InspectorSection title="Decision state">
-          <div className="decision-state">
-            <span>Working set</span>
-            <strong>Awaiting tree promotion</strong>
-          </div>
-        </InspectorSection>
-      )}
-
       {receipts.length > 0 && (
-        <InspectorSection title="Receipts" count={receipts.length}>
+        <InspectorSection title="Sources" count={receipts.length}>
           <div className="receipt-list">
             {receipts.map((receipt, index) => (
-              <ReceiptRow key={`${receipt.ref}-${index}`} receipt={receipt} onReceiptClick={onReceiptClick} />
+              <ReceiptCard key={`${receipt.ref}-${index}`} receipt={receipt} model={model} onReceiptClick={onReceiptClick} />
             ))}
           </div>
         </InspectorSection>
@@ -234,7 +214,7 @@ function ActivityInspector({ item, nodes, onReceiptClick, onSelectNode }) {
 
       {relatedId && (
         <button className="open-related-idea" type="button" onClick={() => onSelectNode(relatedId)}>
-          Open related idea
+          View idea
         </button>
       )}
     </>
@@ -259,10 +239,9 @@ export default function InspectorPane({
   return (
     <aside className="inspector-pane" aria-labelledby="inspector-title">
       <header className="inspector-header">
-        <span>Inspector</span>
         <div>
           {pinned && <button type="button" onClick={onResumeLive}>Follow live</button>}
-          <button type="button" onClick={onClose} aria-label="Close inspector">Close</button>
+          <button type="button" onClick={onClose} aria-label="Close inspector" title="Close">×</button>
         </div>
       </header>
       <div className="inspector-body">
@@ -286,6 +265,7 @@ export default function InspectorPane({
           <ActivityInspector
             item={selection.item}
             nodes={nodes}
+            model={model}
             onReceiptClick={onReceiptClick}
             onSelectNode={onSelectNode}
           />

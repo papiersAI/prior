@@ -66,7 +66,8 @@ export default function App() {
   const [priorReceipt, setPriorReceipt] = useState(null);
   const [done, setDone] = useState({ vanilla: false, prior: false });
   const [running, setRunning] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(null);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [paneOpen, setPaneOpen] = useState(false);
   const [followingLive, setFollowingLive] = useState(true);
   const [runError, setRunError] = useState("");
@@ -196,6 +197,7 @@ export default function App() {
     setSelection(null);
     setBrief(null);
     setBriefOpen(false);
+    setActivityOpen(false);
     setDone({ vanilla: false, prior: false });
     setDivergence(0);
     setMetrics({ vanilla: [], prior: [] });
@@ -226,6 +228,7 @@ export default function App() {
   }
 
   function openPrior(receipt = null) {
+    setActivityOpen(false);
     setPriorReceipt(receipt);
     setPaneOpen(true);
     if (receipt) setTimeout(() => priorApi.current?.jumpTo(receipt), 80);
@@ -244,6 +247,7 @@ export default function App() {
   }
 
   function selectActivity(item) {
+    setActivityOpen(false);
     if (item.t === "brief" && brief) {
       setBriefOpen(true);
       return;
@@ -276,13 +280,6 @@ export default function App() {
   const allValues = [...vanillaSeries, ...priorSeries];
   const domain = allValues.length ? [Math.min(...allValues), Math.max(...allValues)] : null;
 
-  const ideas = treeNodes.filter((node) => node.kind === "idea");
-  const counts = {
-    seeds: treeNodes.filter((node) => node.kind === "seed").length,
-    ideas: ideas.length,
-    evaluated: treeNodes.filter((node) => node.kind === "eval").length,
-    pruned: ideas.filter((node) => node.status === "pruned").length,
-  };
   const phase = phaseFor({
     running,
     brief,
@@ -299,7 +296,6 @@ export default function App() {
           prior
         </button>
         <label className="objective-input">
-          <span>Objective</span>
           <input
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
@@ -308,102 +304,115 @@ export default function App() {
             aria-label="Research objective"
           />
         </label>
-        <div className="header-actions">
-          <span className={`connection-state ${connected ? "is-connected" : ""}`} title={connected ? "Connected" : "Reconnecting"}>
-            <span aria-hidden="true" />
-            {connected ? "Live" : "Reconnecting"}
+        {running && (
+          <span className="header-phase" aria-live="polite">
+            <span className="phase-pulse" aria-hidden="true" />
+            {phase}
           </span>
-          <button className="quiet-button prior-action" type="button" onClick={() => openPrior()}>
-            PRIOR.md
-          </button>
-          {brief && (
-            <button className="quiet-button brief-action" type="button" onClick={() => setBriefOpen(true)}>
-              Read brief
+        )}
+        <div className="header-actions">
+          {connected === false && (
+            <span className="connection-state" title="Reconnecting">
+              <span aria-hidden="true" />
+              Reconnecting
+            </span>
+          )}
+          {TREEISH && activity.length > 0 && (
+            <button className="quiet-button activity-action" type="button" onClick={() => setActivityOpen(true)}>
+              Activity <span>{activity.length}</span>
             </button>
           )}
-          <button
-            className={`run-button ${running ? "is-running" : ""}`}
-            type="button"
-            onClick={run}
-          >
-            {running ? "Stop" : "Run exploration"}
-          </button>
+          {brief && (
+            <button className="quiet-button brief-action" type="button" onClick={() => {
+              setActivityOpen(false);
+              setBriefOpen(true);
+            }}>
+              Brief
+            </button>
+          )}
+          {(running || activity.length > 0 || !TREEISH) && (
+            <button
+              className={`run-button ${running ? "is-running" : ""}`}
+              type="button"
+              onClick={run}
+            >
+              {running ? "Stop" : "Explore"}
+            </button>
+          )}
         </div>
       </header>
-
-      <div className="run-summary" aria-live="polite">
-        <div className="phase-label">
-          <span className={running ? "phase-pulse" : "phase-dot"} aria-hidden="true" />
-          <span>{phase}</span>
-        </div>
-        {TREEISH ? (
-          <div className="run-counts" aria-label="Exploration totals">
-            <span>{counts.seeds} seeds</span>
-            <span>{counts.ideas} ideas</span>
-            <span>{counts.evaluated} evaluated</span>
-            <span>{counts.pruned} pruned</span>
-          </div>
-        ) : hasMetrics ? (
-          <div className="race-headline" aria-label="Experiment speedups">
-            <span>vanilla {fmtSpeedup(vanillaSpeed)}x</span>
-            <strong>prior {fmtSpeedup(priorSpeed)}x</strong>
-            <span>{divergencePercent}% divergence</span>
-          </div>
-        ) : (
-          <span className="race-headline">{divergencePercent}% trajectory divergence</span>
-        )}
-      </div>
 
       {runError && <div className="error-banner" role="alert">{runError}</div>}
 
       {TREEISH ? (
-        <div className="explore-workspace">
+        <main className="tree-surface">
+          <TreeCanvas
+            nodes={treeNodes}
+            scoutNodes={nodes.prior}
+            question={question}
+            running={running}
+            activeNodeId={activeNodeId}
+            selected={selection}
+            followLive={followingLive}
+            onSelectNode={selectNode}
+            onSelectSource={selectSource}
+            onRun={run}
+            onResumeLive={resumeLive}
+            onPauseLive={pauseLive}
+          />
+        </main>
+      ) : (
+        <>
+          <div className="race-summary" aria-live="polite">
+            {hasMetrics ? (
+              <div className="race-headline" aria-label="Experiment speedups">
+                <span>vanilla {fmtSpeedup(vanillaSpeed)}x</span>
+                <strong>prior {fmtSpeedup(priorSpeed)}x</strong>
+                <span>{divergencePercent}% divergence</span>
+              </div>
+            ) : (
+              <span className="race-headline">{divergencePercent}% trajectory divergence</span>
+            )}
+          </div>
+          <main className="race-workspace">
+            <Column
+              label="vanilla"
+              items={nodes.vanilla}
+              finished={done.vanilla}
+              accent={false}
+              series={vanillaSeries}
+              domain={domain}
+              onReceiptClick={openPrior}
+            />
+            <Column
+              label="with prior"
+              items={nodes.prior}
+              finished={done.prior}
+              accent
+              series={priorSeries}
+              domain={domain}
+              onReceiptClick={openPrior}
+            />
+          </main>
+        </>
+      )}
+
+      {TREEISH && activityOpen && (
+        <div className="activity-layer">
+          <button className="activity-scrim" type="button" onClick={() => setActivityOpen(false)} aria-label="Close activity" />
           <TrajectoryRail
             activity={activity}
             nodes={treeNodes}
             running={running}
             selected={selection}
+            onClose={() => setActivityOpen(false)}
             onSelect={selectActivity}
-            onSelectNode={selectNode}
+            onSelectNode={(id) => {
+              setActivityOpen(false);
+              selectNode(id);
+            }}
           />
-          <main className="tree-surface">
-            <TreeCanvas
-              nodes={treeNodes}
-              scoutNodes={nodes.prior}
-              question={question}
-              running={running}
-              activeNodeId={activeNodeId}
-              selected={selection}
-              followLive={followingLive}
-              onSelectNode={selectNode}
-              onSelectSource={selectSource}
-              onRun={run}
-              onResumeLive={resumeLive}
-              onPauseLive={pauseLive}
-            />
-          </main>
         </div>
-      ) : (
-        <main className="race-workspace">
-          <Column
-            label="vanilla"
-            items={nodes.vanilla}
-            finished={done.vanilla}
-            accent={false}
-            series={vanillaSeries}
-            domain={domain}
-            onReceiptClick={openPrior}
-          />
-          <Column
-            label="with prior"
-            items={nodes.prior}
-            finished={done.prior}
-            accent
-            series={priorSeries}
-            domain={domain}
-            onReceiptClick={openPrior}
-          />
-        </main>
       )}
 
       {TREEISH && (
