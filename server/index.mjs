@@ -15,7 +15,8 @@ const ROOT = path.resolve(__dirname, "..");
 const PRIOR_PATH = path.join(ROOT, "PRIOR.md");
 const WORKING_PATH = path.join(__dirname, ".prior-working.md");
 const FIXTURES = {
-  default: path.join(__dirname, "fixtures", "demo-run.jsonl"),
+  default: path.join(__dirname, "fixtures", "tree-cholesky.jsonl"),
+  search: path.join(__dirname, "fixtures", "demo-run.jsonl"),
   kernel: path.join(__dirname, "fixtures", "demo-kernel-run.jsonl"),
   ideate: path.join(__dirname, "fixtures", "ideate-cholesky.jsonl"),
   tree: path.join(__dirname, "fixtures", "tree-cholesky.jsonl"),
