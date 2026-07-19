@@ -332,6 +332,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- static UI (ui/dist), for single-container deploys; SPA fallback to index.html
+  if (req.method === "GET") {
+    const distDir = path.join(ROOT, "ui", "dist");
+    const MIME = {
+      ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+      ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+      ".woff2": "font/woff2", ".json": "application/json",
+    };
+    const rel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    const filePath = path.normalize(path.join(distDir, rel));
+    if (filePath.startsWith(distDir)) {
+      const candidate = fs.existsSync(filePath) && fs.statSync(filePath).isFile()
+        ? filePath
+        : path.join(distDir, "index.html");
+      if (fs.existsSync(candidate)) {
+        res.writeHead(200, { "Content-Type": MIME[path.extname(candidate)] ?? "application/octet-stream" });
+        fs.createReadStream(candidate).pipe(res);
+        return;
+      }
+    }
+  }
+
   json(res, 404, { error: "not found" });
 });
 

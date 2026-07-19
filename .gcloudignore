@@ -1,0 +1,15 @@
+# Only ship what the container copies. Never ship secrets or local state.
+.env
+.env.*
+.git/
+.prior/
+node_modules/
+ui/node_modules/
+runs/
+briefs/
+bench/
+engine/
+prompts/
+docs/
+__pycache__/
+*.log
