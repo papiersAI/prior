@@ -1,16 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import Column from "./components/Column.jsx";
-import PriorPane from "./components/PriorPane.jsx";
-import TreeCanvas from "./components/TreeCanvas.jsx";
 import BriefOverlay from "./components/BriefOverlay.jsx";
+import Column from "./components/Column.jsx";
+import InspectorPane from "./components/InspectorPane.jsx";
+import PriorPane from "./components/PriorPane.jsx";
+import TrajectoryRail from "./components/TrajectoryRail.jsx";
+import TreeCanvas from "./components/TreeCanvas.jsx";
 
-const SERVER = "http://localhost:8787";
+const SERVER = import.meta.env.VITE_PRIOR_SERVER ?? "http://localhost:8787";
 const PARAMS = new URLSearchParams(window.location.search);
-// pick the mock fixture via the page URL: ?fixture=tree-synthetic | tree | kernel | default | ideate
 const FIXTURE = PARAMS.get("fixture");
-// live engine mode: explore (idea tree, default) | pursue (dual race) — ?mode=pursue
 const MODE = PARAMS.get("mode") === "pursue" ? "pursue" : "explore";
-// does this page expect the tree view? (used only for the idle state + pane default)
 const TREEISH = FIXTURE ? FIXTURE === "tree" || FIXTURE === "tree-synthetic" : MODE === "explore";
 
 const FIXTURE_QUESTION =
@@ -20,295 +19,428 @@ const TREE_QUESTION = "GPU MODE — batched dense Cholesky (leaderboard 776)";
 
 const fmtSpeedup = (s) => (s >= 10 ? String(Math.round(s)) : s.toFixed(1));
 
-/* tween a number toward `target` for the divergence meter */
 function useTween(target, ms = 600) {
-  const [v, setV] = useState(target);
+  const [value, setValue] = useState(target);
   const raf = useRef(0);
+
   useEffect(() => {
     cancelAnimationFrame(raf.current);
-    const from = v;
+    const from = value;
     const start = performance.now();
-    const tick = (t) => {
-      const k = Math.min(1, (t - start) / ms);
-      const e = 1 - Math.pow(1 - k, 3);
-      setV(from + (target - from) * e);
-      if (k < 1) raf.current = requestAnimationFrame(tick);
+    const tick = (time) => {
+      const progress = Math.min(1, (time - start) / ms);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(from + (target - from) * eased);
+      if (progress < 1) raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf.current);
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
-  return v;
+
+  return value;
+}
+
+function phaseFor({ running, brief, treeNodes, scoutNodes, activeNodeId, error }) {
+  if (error) return "Run interrupted";
+  if (brief) return "Exploration complete";
+  if (!running) return "Ready to explore";
+
+  const active = treeNodes.find((node) => node.id === activeNodeId);
+  if (active) return `Deepening: ${active.text}`;
+  if (treeNodes.some((node) => node.kind === "idea")) return "Growing the idea tree";
+  if (scoutNodes.some((node) => node.kind === "direction")) return "Distilling candidate directions";
+  if (scoutNodes.length) return "Scouting the library and adjacent evidence";
+  return "Starting exploration";
 }
 
 export default function App() {
   const [nodes, setNodes] = useState({ vanilla: [], prior: [] });
-  const [treeNodes, setTreeNodes] = useState([]); // run:"tree" nodes, live-updated in place
+  const [treeNodes, setTreeNodes] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [activeNodeId, setActiveNodeId] = useState(null);
+  const [selection, setSelection] = useState(null);
   const [brief, setBrief] = useState(null);
   const [briefOpen, setBriefOpen] = useState(false);
   const [divergence, setDivergence] = useState(0);
-  const [status, setStatus] = useState({ run: "system", text: "idle — press run" });
-  const [tick, setTick] = useState({ run: "system", text: "idle — press run" }); // tree-mode ticker
   const [priorMd, setPriorMd] = useState("");
+  const [priorReceipt, setPriorReceipt] = useState(null);
   const [done, setDone] = useState({ vanilla: false, prior: false });
   const [running, setRunning] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [paneOpen, setPaneOpen] = useState(!TREEISH);
+  const [paneOpen, setPaneOpen] = useState(false);
+  const [followingLive, setFollowingLive] = useState(true);
+  const [runError, setRunError] = useState("");
   const [question, setQuestion] = useState(
     FIXTURE === "kernel" ? KERNEL_QUESTION : FIXTURE === "default" ? FIXTURE_QUESTION : TREE_QUESTION
   );
-  const [metrics, setMetrics] = useState({ vanilla: [], prior: [] }); // best_ms per iter
+  const [metrics, setMetrics] = useState({ vanilla: [], prior: [] });
 
-  const depthRef = useRef({}); // race node id → tree depth
-  const priorApi = useRef(null); // set by PriorPane: { jumpTo(receipt) }
+  const depthRef = useRef({});
+  const priorApi = useRef(null);
+  const eventSequence = useRef(0);
+  const selectionPinned = useRef(false);
 
   useEffect(() => {
-    const es = new EventSource(`${SERVER}/events`);
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    es.onmessage = (e) => {
-      let ev;
+    const eventSource = new EventSource(`${SERVER}/events`);
+    eventSource.onopen = () => setConnected(true);
+    eventSource.onerror = () => setConnected(false);
+    eventSource.onmessage = (message) => {
+      let event;
       try {
-        ev = JSON.parse(e.data);
+        event = JSON.parse(message.data);
       } catch {
         return;
       }
-      if (ev.t === "node") {
-        if (ev.run === "tree") {
-          setTreeNodes((s) => [...s, { ...ev.node }]);
+
+      if (event.t !== "prior") {
+        const traced = { ...event, _key: `event-${eventSequence.current++}`, _at: Date.now() };
+        setActivity((current) => [...current, traced]);
+      }
+
+      if (event.t === "node") {
+        if (event.run === "tree") {
+          const scoreHistory = event.node.score == null ? [] : [event.node.score];
+          const statusHistory = event.node.status ? [event.node.status] : [];
+          const scoreCheckpoints = event.node.score == null
+            ? []
+            : [{ score: event.node.score, status: event.node.status ?? "frontier", stage: "generated" }];
+          setTreeNodes((current) => [
+            ...current,
+            { ...event.node, initialScore: event.node.score, scoreHistory, statusHistory, scoreCheckpoints },
+          ]);
         } else {
-          // race lanes; during a tree run these are the scout's seed-reading events →
-          // they surface in the bottom ticker only (the canvas ignores them)
-          const n = ev.node;
-          const depth = n.parentId ? (depthRef.current[n.parentId] ?? 0) + 1 : 0;
-          depthRef.current[n.id] = depth;
-          setNodes((s) => ({ ...s, [ev.run]: [...s[ev.run], { ...n, depth, step: ev.step }] }));
-          setTick({ run: ev.run, text: n.text });
+          const node = event.node;
+          const depth = node.parentId ? (depthRef.current[node.parentId] ?? 0) + 1 : 0;
+          depthRef.current[node.id] = depth;
+          setNodes((current) => ({
+            ...current,
+            [event.run]: [...current[event.run], { ...node, depth, step: event.step }],
+          }));
         }
-      } else if (ev.t === "update") {
-        setTreeNodes((s) =>
-          s.map((n) =>
-            n.id === ev.nodeId
-              ? { ...n, score: ev.score ?? n.score, status: ev.status ?? n.status }
-              : n
-          )
+      } else if (event.t === "update") {
+        setTreeNodes((current) =>
+          current.map((node) => {
+            if (node.id !== event.nodeId) return node;
+            const score = event.score ?? node.score;
+            const statusValue = event.status ?? node.status;
+            const scoreHistory =
+              event.score != null && node.scoreHistory?.at(-1) !== event.score
+                ? [...(node.scoreHistory ?? []), event.score]
+                : node.scoreHistory ?? [];
+            const statusHistory =
+              event.status && node.statusHistory?.at(-1) !== event.status
+                ? [...(node.statusHistory ?? []), event.status]
+                : node.statusHistory ?? [];
+            const scoreCheckpoints = event.score != null || event.status
+              ? [
+                  ...(node.scoreCheckpoints ?? []),
+                  {
+                    score,
+                    status: statusValue,
+                    stage: event.status === "expanding" ? "deep-dive" : event.status === "pruned" ? "pruned" : event.status === "expanded" ? "evaluated" : "updated",
+                  },
+                ]
+              : node.scoreCheckpoints ?? [];
+            return { ...node, score, status: statusValue, scoreHistory, statusHistory, scoreCheckpoints };
+          })
         );
-      } else if (ev.t === "brief") {
-        setBrief(ev.markdown);
+        if (event.status === "expanding") {
+          setActiveNodeId(event.nodeId);
+          if (!selectionPinned.current) setSelection({ kind: "node", id: event.nodeId });
+        } else if (event.status === "expanded" || event.status === "pruned") {
+          setActiveNodeId((current) => (current === event.nodeId ? null : current));
+        }
+      } else if (event.t === "brief") {
+        setBrief(event.markdown);
         setRunning(false);
-      } else if (ev.t === "divergence") {
-        setDivergence(ev.value);
-      } else if (ev.t === "metric") {
-        setMetrics((s) => ({
-          ...s,
-          [ev.run]: [...(s[ev.run] ?? []), { iter: ev.iter, value: ev.value }],
+      } else if (event.t === "divergence") {
+        setDivergence(event.value);
+      } else if (event.t === "metric") {
+        setMetrics((current) => ({
+          ...current,
+          [event.run]: [...(current[event.run] ?? []), { iter: event.iter, value: event.value }],
         }));
-      } else if (ev.t === "status") {
-        setStatus({ run: ev.run, text: ev.text });
-        setTick({ run: ev.run, text: ev.text });
-      } else if (ev.t === "prior") {
-        setPriorMd(ev.markdown);
-      } else if (ev.t === "done") {
-        setDone((s) => {
-          const next = { ...s, [ev.run]: true };
+      } else if (event.t === "error") {
+        setRunning(false);
+        setActiveNodeId(null);
+        setRunError(event.text ?? "Run failed");
+      } else if (event.t === "prior") {
+        setPriorMd(event.markdown);
+      } else if (event.t === "done") {
+        setDone((current) => {
+          const next = { ...current, [event.run]: true };
           if (next.vanilla && next.prior) setRunning(false);
           return next;
         });
       }
     };
-    return () => es.close();
+    return () => eventSource.close();
   }, []);
 
   async function run() {
     if (running) {
       await fetch(`${SERVER}/api/stop`, { method: "POST" }).catch(() => {});
       setRunning(false);
+      setActiveNodeId(null);
       return;
     }
+
     depthRef.current = {};
+    eventSequence.current = 0;
+    selectionPinned.current = false;
+    setFollowingLive(true);
     setNodes({ vanilla: [], prior: [] });
     setTreeNodes([]);
+    setActivity([]);
+    setActiveNodeId(null);
+    setSelection(null);
     setBrief(null);
     setBriefOpen(false);
     setDone({ vanilla: false, prior: false });
     setDivergence(0);
     setMetrics({ vanilla: [], prior: [] });
+    setRunError("");
     setRunning(true);
+
     const runUrl = FIXTURE
       ? `${SERVER}/api/run?fixture=${encodeURIComponent(FIXTURE)}`
       : `${SERVER}/api/run`;
-    const res = await fetch(runUrl, {
+    const response = await fetch(runUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, mode: MODE }),
     }).catch(() => null);
-    if (!res) {
+
+    if (!response) {
+      const message = "Server unreachable. Start the prior server and try again.";
       setRunning(false);
-      setStatus({ run: "system", text: "server unreachable — is `node server/index.mjs` running?" });
+      setRunError(message);
       return;
     }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const message = body.error ?? `Run failed (${response.status})`;
       setRunning(false);
-      const text = err.error ?? `run failed (${res.status})`;
-      setStatus({ run: "system", text });
-      setTick({ run: "system", text });
+      setRunError(message);
     }
   }
 
-  function onReceiptClick(receipt) {
+  function openPrior(receipt = null) {
+    setPriorReceipt(receipt);
     setPaneOpen(true);
-    // pane may need a render to expand before we can scroll to the line
-    setTimeout(() => priorApi.current?.jumpTo(receipt), 60);
+    if (receipt) setTimeout(() => priorApi.current?.jumpTo(receipt), 80);
   }
 
-  const treeMode = treeNodes.length > 0;
-  const raceActive =
-    nodes.vanilla.length > 0 || (!treeMode && nodes.prior.length > 0) || divergence > 0;
+  function selectNode(id) {
+    selectionPinned.current = true;
+    setFollowingLive(false);
+    setSelection({ kind: "node", id });
+  }
 
-  const shown = useTween(divergence);
-  const pct = Math.round(shown * 100);
+  function selectSource(node) {
+    selectionPinned.current = true;
+    setFollowingLive(false);
+    setSelection({ kind: "source", node });
+  }
 
-  // experiment mode: metric events flip the headline to per-lane speedup vs baseline
-  const vSeries = metrics.vanilla.map((m) => m.value);
-  const pSeries = metrics.prior.map((m) => m.value);
-  const hasMetrics = vSeries.length + pSeries.length > 0;
-  const speedupOf = (arr) => (arr.length ? arr[0] / arr[arr.length - 1] : 1);
-  const vSpeed = useTween(speedupOf(vSeries));
-  const pSpeed = useTween(speedupOf(pSeries));
-  const allValues = [...vSeries, ...pSeries];
-  const domain = allValues.length
-    ? [Math.min(...allValues), Math.max(...allValues)]
-    : null;
+  function selectActivity(item) {
+    if (item.t === "brief" && brief) {
+      setBriefOpen(true);
+      return;
+    }
+    selectionPinned.current = true;
+    setFollowingLive(false);
+    setSelection({ kind: "activity", item });
+  }
 
-  const ticker = treeMode ? tick : status;
+  function resumeLive() {
+    selectionPinned.current = false;
+    setFollowingLive(true);
+    setSelection(activeNodeId ? { kind: "node", id: activeNodeId } : null);
+  }
+
+  function pauseLive() {
+    if (!activeNodeId) return;
+    selectionPinned.current = true;
+    setFollowingLive(false);
+  }
+
+  const shownDivergence = useTween(divergence);
+  const divergencePercent = Math.round(shownDivergence * 100);
+  const vanillaSeries = metrics.vanilla.map((metric) => metric.value);
+  const priorSeries = metrics.prior.map((metric) => metric.value);
+  const hasMetrics = vanillaSeries.length + priorSeries.length > 0;
+  const speedupOf = (series) => (series.length ? series[0] / series[series.length - 1] : 1);
+  const vanillaSpeed = useTween(speedupOf(vanillaSeries));
+  const priorSpeed = useTween(speedupOf(priorSeries));
+  const allValues = [...vanillaSeries, ...priorSeries];
+  const domain = allValues.length ? [Math.min(...allValues), Math.max(...allValues)] : null;
+
+  const ideas = treeNodes.filter((node) => node.kind === "idea");
+  const counts = {
+    seeds: treeNodes.filter((node) => node.kind === "seed").length,
+    ideas: ideas.length,
+    evaluated: treeNodes.filter((node) => node.kind === "eval").length,
+    pruned: ideas.filter((node) => node.status === "pruned").length,
+  };
+  const phase = phaseFor({
+    running,
+    brief,
+    treeNodes,
+    scoutNodes: nodes.prior,
+    activeNodeId,
+    error: runError,
+  });
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#0a0a0b] text-white select-text">
-      {/* ── top bar ─────────────────────────────────────────── */}
-      <header className="flex items-center gap-5 px-6 h-[72px] shrink-0">
-        <span className="text-lg font-medium tracking-[0.35em] text-white/90 shrink-0">
+    <div className="app-shell">
+      <header className="app-header">
+        <button className="wordmark" type="button" onClick={() => openPrior()} title="Open PRIOR.md">
           prior
-        </span>
-        <input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          spellCheck={false}
-          className="flex-1 min-w-0 bg-transparent font-mono text-xs text-white/60
-                     placeholder-white/25 border-b border-white/10 focus:border-white/25
-                     outline-none py-1.5 transition-colors"
-          placeholder="task file or research question…"
-        />
-
-        {/* race headline — must read from the back of a room (untouched code path) */}
-        {!treeMode && hasMetrics && (
-          <div className="flex flex-col items-center gap-2 shrink-0">
-            <div className="flex items-baseline gap-3 font-mono tabular-nums leading-none">
-              <span className="text-sm text-white/40">vanilla</span>
-              <span className="text-4xl font-semibold text-white/80">
-                {fmtSpeedup(vSpeed)}×
-              </span>
-              <span className="text-2xl text-white/15 mx-1">|</span>
-              <span className="text-sm text-white/40">prior</span>
-              <span className="text-4xl font-semibold text-accent">
-                {fmtSpeedup(pSpeed)}×
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono tabular-nums text-xs text-white/45">{pct}%</span>
-              <span className="text-[9px] uppercase tracking-[0.28em] text-white/30">
-                technique divergence
-              </span>
-            </div>
-          </div>
-        )}
-        {!treeMode && !hasMetrics && raceActive && (
-          <div className="flex flex-col items-center gap-1.5 shrink-0">
-            <span className="font-mono tabular-nums text-4xl font-semibold text-accent leading-none">
-              {pct}%
-            </span>
-            <div className="w-56 h-[3px] bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent transition-[width] duration-500 ease-out"
-                style={{ width: `${Math.min(100, shown * 100)}%` }}
-              />
-            </div>
-            <span className="text-[10px] uppercase tracking-[0.3em] text-white/35">
-              trajectory divergence
-            </span>
-          </div>
-        )}
-
-        {brief && (
-          <button
-            onClick={() => setBriefOpen(true)}
-            className="shrink-0 px-3 py-1.5 text-[12px] text-white/60 border border-white/15
-                       rounded-sm hover:bg-white/5 hover:text-white/90 transition-colors cursor-pointer"
-          >
-            view brief
-          </button>
-        )}
-        <button
-          onClick={run}
-          className="shrink-0 px-4 py-1.5 text-sm text-white/70 border border-white/15
-                     rounded-sm hover:bg-white/5 hover:text-white/90 transition-colors cursor-pointer"
-        >
-          {running ? "stop" : "run"}
         </button>
-        {!connected && (
-          <span className="shrink-0 font-mono text-[10px] text-white/25">reconnecting…</span>
-        )}
+        <label className="objective-input">
+          <span>Objective</span>
+          <input
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            disabled={running}
+            spellCheck={false}
+            aria-label="Research objective"
+          />
+        </label>
+        <div className="header-actions">
+          <span className={`connection-state ${connected ? "is-connected" : ""}`} title={connected ? "Connected" : "Reconnecting"}>
+            <span aria-hidden="true" />
+            {connected ? "Live" : "Reconnecting"}
+          </span>
+          <button className="quiet-button prior-action" type="button" onClick={() => openPrior()}>
+            PRIOR.md
+          </button>
+          {brief && (
+            <button className="quiet-button brief-action" type="button" onClick={() => setBriefOpen(true)}>
+              Read brief
+            </button>
+          )}
+          <button
+            className={`run-button ${running ? "is-running" : ""}`}
+            type="button"
+            onClick={run}
+          >
+            {running ? "Stop" : "Run exploration"}
+          </button>
+        </div>
       </header>
 
-      {/* ── main split ──────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0 border-t border-white/10">
-        {treeMode ? (
-          <main className="flex-1 min-w-0 min-h-0">
-            <TreeCanvas nodes={treeNodes} onReceiptClick={onReceiptClick} />
-          </main>
-        ) : TREEISH ? (
-          <main className="flex-1 min-w-0 min-h-0 flex items-center justify-center">
-            <span className="text-[12.5px] italic text-white/20">
-              press run to grow the idea tree
-            </span>
-          </main>
+      <div className="run-summary" aria-live="polite">
+        <div className="phase-label">
+          <span className={running ? "phase-pulse" : "phase-dot"} aria-hidden="true" />
+          <span>{phase}</span>
+        </div>
+        {TREEISH ? (
+          <div className="run-counts" aria-label="Exploration totals">
+            <span>{counts.seeds} seeds</span>
+            <span>{counts.ideas} ideas</span>
+            <span>{counts.evaluated} evaluated</span>
+            <span>{counts.pruned} pruned</span>
+          </div>
+        ) : hasMetrics ? (
+          <div className="race-headline" aria-label="Experiment speedups">
+            <span>vanilla {fmtSpeedup(vanillaSpeed)}x</span>
+            <strong>prior {fmtSpeedup(priorSpeed)}x</strong>
+            <span>{divergencePercent}% divergence</span>
+          </div>
         ) : (
-          <main className="flex-1 min-w-0 grid grid-cols-2 divide-x divide-white/10">
-            <Column
-              label="vanilla"
-              items={nodes.vanilla}
-              finished={done.vanilla}
-              accent={false}
-              series={vSeries}
-              domain={domain}
-              onReceiptClick={onReceiptClick}
-            />
-            <Column
-              label="with prior"
-              items={nodes.prior}
-              finished={done.prior}
-              accent
-              series={pSeries}
-              domain={domain}
-              onReceiptClick={onReceiptClick}
-            />
-          </main>
+          <span className="race-headline">{divergencePercent}% trajectory divergence</span>
         )}
-        <PriorPane
-          server={SERVER}
-          markdown={priorMd}
-          open={paneOpen}
-          setOpen={setPaneOpen}
-          apiRef={priorApi}
-        />
       </div>
 
-      {/* ── status ticker ───────────────────────────────────── */}
-      <footer className="h-8 shrink-0 border-t border-white/10 flex items-center px-5 gap-3 font-mono text-[11px] text-white/35 overflow-hidden whitespace-nowrap">
-        {ticker.run !== "system" && <span className="text-white/20">[{ticker.run}]</span>}
-        <span className="truncate">{ticker.text}</span>
-      </footer>
+      {runError && <div className="error-banner" role="alert">{runError}</div>}
 
-      {briefOpen && brief && <BriefOverlay markdown={brief} onClose={() => setBriefOpen(false)} />}
+      {TREEISH ? (
+        <div className="explore-workspace">
+          <TrajectoryRail
+            activity={activity}
+            nodes={treeNodes}
+            running={running}
+            selected={selection}
+            onSelect={selectActivity}
+            onSelectNode={selectNode}
+          />
+          <main className="tree-surface">
+            <TreeCanvas
+              nodes={treeNodes}
+              scoutNodes={nodes.prior}
+              question={question}
+              running={running}
+              activeNodeId={activeNodeId}
+              selected={selection}
+              followLive={followingLive}
+              onSelectNode={selectNode}
+              onSelectSource={selectSource}
+              onRun={run}
+              onResumeLive={resumeLive}
+              onPauseLive={pauseLive}
+            />
+          </main>
+        </div>
+      ) : (
+        <main className="race-workspace">
+          <Column
+            label="vanilla"
+            items={nodes.vanilla}
+            finished={done.vanilla}
+            accent={false}
+            series={vanillaSeries}
+            domain={domain}
+            onReceiptClick={openPrior}
+          />
+          <Column
+            label="with prior"
+            items={nodes.prior}
+            finished={done.prior}
+            accent
+            series={priorSeries}
+            domain={domain}
+            onReceiptClick={openPrior}
+          />
+        </main>
+      )}
+
+      {TREEISH && (
+        <InspectorPane
+          selection={selection}
+          nodes={treeNodes}
+          pinned={selectionPinned.current}
+          onClose={() => {
+            selectionPinned.current = false;
+            setFollowingLive(true);
+            setSelection(null);
+          }}
+          onResumeLive={resumeLive}
+          onSelectNode={selectNode}
+          onReceiptClick={openPrior}
+        />
+      )}
+
+      <PriorPane
+        server={SERVER}
+        markdown={priorMd}
+        open={paneOpen}
+        setOpen={setPaneOpen}
+        apiRef={priorApi}
+        focusReceipt={priorReceipt}
+      />
+
+      {briefOpen && brief && (
+        <BriefOverlay
+          markdown={brief}
+          onClose={() => setBriefOpen(false)}
+          onReceiptClick={(receipt) => {
+            setBriefOpen(false);
+            openPrior(receipt);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,91 +1,129 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { marked } from "marked";
+import { renderMarkdown } from "./safeMarkdown.js";
+import useModalFocus from "./useModalFocus.js";
 
-export default function PriorPane({ server, markdown, open, setOpen, apiRef }) {
+export default function PriorPane({ server, markdown, open, setOpen, apiRef, focusReceipt }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [saveState, setSaveState] = useState("idle");
+  const [saveError, setSaveError] = useState("");
+  const [missingReceipt, setMissingReceipt] = useState(null);
   const viewRef = useRef(null);
-  const taRef = useRef(null);
+  const textareaRef = useRef(null);
+  const drawerRef = useRef(null);
+  const closeRef = useRef(null);
   const pendingCaret = useRef(null);
 
   const html = useMemo(() => {
     try {
-      return marked.parse(markdown || "", { async: false });
+      return renderMarkdown(markdown);
     } catch {
       return "";
     }
   }, [markdown]);
 
-  /* receipt click → scroll to + flash the matching line */
   useEffect(() => {
     apiRef.current = {
       jumpTo(receipt) {
         const container = viewRef.current;
-        if (!container) return;
+        if (!container) return false;
         const candidates = [];
         if (receipt.quote) candidates.push(receipt.quote.replace(/^-\s*/, "").slice(0, 60));
         if (receipt.ref?.startsWith("§")) candidates.push(receipt.ref.replace(/^§\s*/, ""));
         else if (receipt.ref) candidates.push(receipt.ref);
-        const els = container.querySelectorAll("h1,h2,h3,h4,p,li,blockquote");
+        const elements = container.querySelectorAll("h1,h2,h3,h4,p,li,blockquote");
         let target = null;
-        outer: for (const c of candidates) {
-          for (const el of els) {
-            if (el.textContent.includes(c)) {
-              target = el;
+        outer: for (const candidate of candidates) {
+          for (const element of elements) {
+            if (element.textContent.includes(candidate)) {
+              target = element;
               break outer;
             }
           }
         }
-        if (!target) return;
+        if (!target) {
+          setMissingReceipt(receipt);
+          return false;
+        }
+        setMissingReceipt(null);
         target.scrollIntoView({ behavior: "smooth", block: "center" });
         target.classList.remove("flash-line");
-        void target.offsetWidth; // restart the animation
+        void target.offsetWidth;
         target.classList.add("flash-line");
         setTimeout(() => target.classList.remove("flash-line"), 1700);
+        return true;
       },
     };
   }, [apiRef]);
 
-  /* caret placement after "+ aversion" */
+  useEffect(() => {
+    if (!open || !focusReceipt || editing) return;
+    const timer = setTimeout(() => apiRef.current?.jumpTo(focusReceipt), 60);
+    return () => clearTimeout(timer);
+  }, [apiRef, editing, focusReceipt, open, html]);
+
+  useEffect(() => {
+    if (!open || focusReceipt) return;
+    setMissingReceipt(null);
+  }, [focusReceipt, open]);
+
+  useModalFocus({
+    open,
+    containerRef: drawerRef,
+    initialRef: closeRef,
+    onClose: () => setOpen(false),
+  });
+
   useEffect(() => {
     if (pendingCaret.current == null) return;
-    const ta = taRef.current;
-    if (!ta) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
     const caret = pendingCaret.current;
     pendingCaret.current = null;
-    ta.focus();
-    ta.setSelectionRange(caret, caret);
+    textarea.focus();
+    textarea.setSelectionRange(caret, caret);
     const line = draft.slice(0, caret).split("\n").length;
-    ta.scrollTop = Math.max(0, line * 16.5 - ta.clientHeight / 2);
+    textarea.scrollTop = Math.max(0, line * 18 - textarea.clientHeight / 2);
   }, [draft, editing]);
 
   async function save() {
-    await fetch(`${server}/api/prior`, {
+    setSaveState("saving");
+    setSaveError("");
+    const response = await fetch(`${server}/api/prior`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markdown: draft }),
-    }).catch(() => {});
-    setEditing(false); // server rebroadcasts {t:"prior"} → view updates
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      setSaveState("error");
+      setSaveError(response ? `Save failed (${response.status})` : "Save failed. The server is unreachable.");
+      return;
+    }
+    setSaveState("saved");
+    setEditing(false);
+    setTimeout(() => setSaveState("idle"), 1400);
   }
 
   function toggleEdit() {
     if (editing) {
       setEditing(false);
+      setSaveError("");
     } else {
       setDraft(markdown);
       setEditing(true);
     }
   }
 
-  /* demo beat: one click → "- Aversion: " inserted, cursor ready */
   function addAversion() {
     const base = editing ? draft : markdown;
     const insert = "- Aversion: ";
     const marker = "## Aversions & negative space";
-    const idx = base.indexOf(marker);
-    let next, caret;
-    if (idx >= 0) {
-      const lineEnd = base.indexOf("\n", idx);
+    const index = base.indexOf(marker);
+    let next;
+    let caret;
+    if (index >= 0) {
+      const lineEnd = base.indexOf("\n", index);
       const at = lineEnd >= 0 ? lineEnd + 1 : base.length;
       next = base.slice(0, at) + insert + "\n" + base.slice(at);
       caret = at + insert.length;
@@ -98,81 +136,61 @@ export default function PriorPane({ server, markdown, open, setOpen, apiRef }) {
     setEditing(true);
   }
 
-  if (!open) {
-    return (
-      <aside className="w-9 shrink-0 border-l border-white/10 flex flex-col items-center pt-4">
-        <button
-          onClick={() => setOpen(true)}
-          className="text-white/35 hover:text-white/70 transition-colors font-mono text-[10px] tracking-[0.2em]"
-          style={{ writingMode: "vertical-rl" }}
-          title="open PRIOR.md"
-        >
-          ◂ PRIOR.md
-        </button>
-      </aside>
-    );
-  }
+  if (!open) return null;
 
   return (
-    <aside className="w-[400px] shrink-0 border-l border-white/10 flex flex-col min-h-0">
-      <div className="h-10 shrink-0 flex items-center gap-2 px-4">
-        <span className="font-mono text-[11px] text-white/50 mr-auto">PRIOR.md</span>
-        <button
-          onClick={addAversion}
-          className="text-[11px] text-white/60 hover:text-white/90 border border-white/15
-                     hover:bg-white/5 rounded-sm px-2 py-[3px] transition-colors"
-        >
-          + aversion
-        </button>
-        <button
-          onClick={toggleEdit}
-          className="text-[11px] text-white/60 hover:text-white/90 border border-white/15
-                     hover:bg-white/5 rounded-sm px-2 py-[3px] transition-colors"
-        >
-          {editing ? "view" : "edit"}
-        </button>
-        <button
-          onClick={() => setOpen(false)}
-          className="text-white/35 hover:text-white/70 transition-colors px-1"
-          title="collapse"
-        >
-          ▸
-        </button>
-      </div>
-
-      {editing ? (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <textarea
-            ref={taRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                e.preventDefault();
-                save();
-              }
-            }}
-            spellCheck={false}
-            className="flex-1 min-h-0 resize-none bg-transparent font-mono text-[11px]
-                       leading-[1.5] text-white/70 px-4 py-2 outline-none"
-          />
-          <div className="h-8 shrink-0 flex items-center justify-between px-4 border-t border-white/10">
-            <span className="font-mono text-[10px] text-white/25">⌘↵ to save — affects next step</span>
-            <button
-              onClick={save}
-              className="text-[11px] text-white/60 hover:text-white/90 transition-colors"
-            >
-              save
-            </button>
+    <div className="drawer-layer" role="presentation">
+      <button className="drawer-scrim" type="button" onClick={() => setOpen(false)} aria-label="Close PRIOR.md" />
+      <aside ref={drawerRef} className="prior-drawer" role="dialog" aria-modal="true" aria-label="PRIOR.md taste file" tabIndex={-1}>
+        <header className="drawer-header">
+          <div>
+            <span>Taste file</span>
+            <strong>PRIOR.md</strong>
           </div>
-        </div>
-      ) : (
-        <div
-          ref={viewRef}
-          className="prior-md flex-1 min-h-0 overflow-y-auto px-4 pb-8"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      )}
-    </aside>
+          <div className="drawer-actions">
+            <button type="button" onClick={addAversion}>Add aversion</button>
+            <button type="button" onClick={toggleEdit}>{editing ? "Cancel edit" : "Edit"}</button>
+            <button ref={closeRef} type="button" onClick={() => setOpen(false)}>Close</button>
+          </div>
+        </header>
+
+        {missingReceipt && !editing && focusReceipt?.ref === missingReceipt.ref && (
+          <div className="receipt-miss" role="status">
+            <span>Direct library receipt</span>
+            <strong>{missingReceipt.ref}</strong>
+            {missingReceipt.quote && <p>{missingReceipt.quote}</p>}
+            <small>This seed was selected from the full library and is not materialized in the current PRIOR.md index.</small>
+          </div>
+        )}
+
+        {editing ? (
+          <div className="prior-editor">
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  save();
+                }
+              }}
+              spellCheck={false}
+              aria-label="Edit PRIOR.md"
+            />
+            <footer>
+              <span className={saveState === "error" ? "is-error" : ""}>
+                {saveError || (saveState === "saving" ? "Saving" : "Editing working prior")}
+              </span>
+              <button type="button" onClick={save} disabled={saveState === "saving"}>
+                {saveState === "saving" ? "Saving" : "Save changes"}
+              </button>
+            </footer>
+          </div>
+        ) : (
+          <div ref={viewRef} className="prior-md" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+      </aside>
+    </div>
   );
 }

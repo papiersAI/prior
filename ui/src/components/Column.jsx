@@ -9,108 +9,72 @@ function domainOf(url) {
   }
 }
 
-const fmtMs = (v) => (v >= 100 ? `${Math.round(v)}ms` : `${v.toFixed(1)}ms`);
+const fmtMs = (value) => (value >= 100 ? `${Math.round(value)} ms` : `${value.toFixed(1)} ms`);
 
-/* best_ms over iters — log scale, shared domain across lanes, no axes */
 function Sparkline({ series, domain, accent }) {
   if (!series || series.length < 2 || !domain) return null;
-  const W = 120;
-  const H = 24;
-  const P = 2.5;
-  const ly = (v) => Math.log(Math.max(v, 1e-9));
-  const lo = ly(domain[0]);
-  const hi = ly(domain[1]);
-  const span = hi - lo || 1;
-  const pts = series.map((v, i) => [
-    P + (i / (series.length - 1)) * (W - 2 * P),
-    P + ((hi - ly(v)) / span) * (H - 2 * P),
+  const width = 120;
+  const height = 24;
+  const padding = 2.5;
+  const logValue = (value) => Math.log(Math.max(value, 1e-9));
+  const low = logValue(domain[0]);
+  const high = logValue(domain[1]);
+  const span = high - low || 1;
+  const points = series.map((value, index) => [
+    padding + (index / (series.length - 1)) * (width - 2 * padding),
+    padding + ((high - logValue(value)) / span) * (height - 2 * padding),
   ]);
-  const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const [ex, ey] = pts[pts.length - 1];
+  const path = points
+    .map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ");
+  const [endX, endY] = points.at(-1);
+
   return (
     <svg
-      width={W}
-      height={H}
-      viewBox={`0 0 ${W} ${H}`}
-      className={accent ? "text-accent" : "text-white/45"}
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className={`race-sparkline ${accent ? "is-accent" : ""}`}
       aria-hidden="true"
     >
-      <path
-        d={d}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <circle cx={ex} cy={ey} r="2" fill="currentColor" />
+      <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={endX} cy={endY} r="2" fill="currentColor" />
     </svg>
   );
 }
 
-function Node({ node, accent, onReceiptClick }) {
+function RaceNode({ node, accent, onReceiptClick }) {
   const steered = accent && node.receipts?.length > 0;
-  let body;
-  if (node.kind === "query") {
-    body = (
-      <span className="font-mono text-[12.5px] text-white/75">
-        <span className="text-white/30 mr-1.5">⌕</span>
-        {node.text}
-      </span>
-    );
-  } else if (node.kind === "result") {
-    // library ids (doc_/hl_/cnv_) are not http urls — render as non-link chips
-    const idUrl = node.url && /^(doc|hl|cnv)_/.test(node.url) ? node.url : null;
-    const domain = !idUrl && node.url ? domainOf(node.url) : null;
-    const reverted = /revert/i.test(node.text);
-    body = (
-      <span
-        className={
-          reverted
-            ? "text-[12.5px] text-white/30 line-through decoration-white/25"
-            : "text-[12.5px] text-white/60"
-        }
-      >
-        {node.text}
-        {domain && (
-          <a
-            href={node.url}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-2 font-mono text-[10.5px] text-white/30 hover:text-white/60 hover:underline transition-colors"
-          >
-            {domain}
-          </a>
-        )}
-        {idUrl && (
-          <button
-            onClick={() => onReceiptClick({ ref: idUrl, quote: "" })}
-            className="ml-2 align-middle font-mono text-[10px] leading-none px-1.5 py-[3px]
-                       rounded-sm border border-white/15 text-white/45 hover:bg-white/5
-                       hover:text-white/70 transition-colors cursor-pointer"
-          >
-            {shortRef(idUrl)}
-          </button>
-        )}
-      </span>
-    );
-  } else if (node.kind === "direction") {
-    body = <span className="text-[13px] font-medium text-white/90">{node.text}</span>;
-  } else {
-    body = <span className="text-[12.5px] italic text-white/45">{node.text}</span>;
-  }
+  const idUrl = node.url && /^(doc|hl|cnv)_/.test(node.url) ? node.url : null;
+  const domain = !idUrl && node.url ? domainOf(node.url) : null;
+  const reverted = node.kind === "result" && /revert/i.test(node.text);
 
   return (
-    <div className="node-in py-[3px]" style={{ paddingLeft: node.depth * 18 }}>
-      <div className={steered ? "border-l-2 border-accent/40 pl-2.5" : ""}>
-        {body}
-        {node.receipts?.map((r, i) => (
-          <span key={i} className="ml-2">
-            <ReceiptChip receipt={r} onClick={onReceiptClick} />
-          </span>
-        ))}
+    <article
+      className={`race-event ${steered ? "is-steered" : ""} ${reverted ? "is-reverted" : ""}`}
+      style={{ marginLeft: node.depth * 18 }}
+      data-kind={node.kind}
+    >
+      <span className="race-event-kind">{node.kind}</span>
+      <div className="race-event-copy">
+        <p>{node.text}</p>
+        {(domain || idUrl || node.receipts?.length > 0) && (
+          <div className="race-event-sources">
+            {domain && (
+              <a href={node.url} target="_blank" rel="noreferrer">{domain}</a>
+            )}
+            {idUrl && (
+              <button type="button" onClick={() => onReceiptClick({ ref: idUrl, quote: node.text })}>
+                {shortRef(idUrl)}
+              </button>
+            )}
+            {node.receipts?.map((receipt, index) => (
+              <ReceiptChip key={`${receipt.ref}-${index}`} receipt={receipt} onClick={onReceiptClick} />
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -126,35 +90,34 @@ export default function Column({
   const bodyRef = useRef(null);
 
   useEffect(() => {
-    const el = bodyRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const element = bodyRef.current;
+    if (element) element.scrollTop = element.scrollHeight;
   }, [items.length]);
 
-  const best = series?.length ? series[series.length - 1] : null;
+  const best = series?.length ? series.at(-1) : null;
 
   return (
-    <section className="flex flex-col min-h-0 min-w-0">
-      <div className="h-10 shrink-0 flex items-center gap-2.5 px-5">
-        <span className="text-[10.5px] uppercase tracking-[0.18em] text-white/40 border border-white/10 rounded-full px-2.5 py-[3px]">
-          {label}
-        </span>
-        {finished && <span className="text-[10px] text-white/25 font-mono">done</span>}
+    <section className={`race-column ${accent ? "is-prior" : ""}`}>
+      <header className="race-column-header">
+        <div>
+          <span>{label}</span>
+          {finished && <strong>Complete</strong>}
+        </div>
         {series?.length >= 2 && (
-          <span className="ml-auto flex items-center gap-2">
-            <span className="font-mono tabular-nums text-[10px] text-white/35">
-              {fmtMs(best)}
-            </span>
+          <div className="race-metric">
+            <span>{fmtMs(best)}</span>
             <Sparkline series={series} domain={domain} accent={accent} />
-          </span>
+          </div>
         )}
-      </div>
-      <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">
-        {items.length === 0 && (
-          <div className="pt-10 text-[12px] text-white/20 italic">waiting for run…</div>
+      </header>
+      <div ref={bodyRef} className="race-column-body">
+        {items.length === 0 ? (
+          <p className="race-empty">Waiting for the experiment loop.</p>
+        ) : (
+          items.map((node) => (
+            <RaceNode key={node.id} node={node} accent={accent} onReceiptClick={onReceiptClick} />
+          ))
         )}
-        {items.map((n) => (
-          <Node key={n.id} node={n} accent={accent} onReceiptClick={onReceiptClick} />
-        ))}
       </div>
     </section>
   );

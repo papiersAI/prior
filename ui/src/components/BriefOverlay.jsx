@@ -1,47 +1,43 @@
-import React, { useEffect, useMemo } from "react";
-import { marked } from "marked";
+import React, { useMemo, useRef } from "react";
+import { renderBriefMarkdown } from "./safeMarkdown.js";
+import useModalFocus from "./useModalFocus.js";
 
-/* library ids → mono chips; external links open in a new tab */
-function decorate(html) {
-  return html
-    .replace(
-      /\[?\b((?:doc|hl|cnv)_[0-9a-f]{8,})\b\]?/g,
-      (_, id) => `<span class="brief-chip">${id.slice(0, 12)}…</span>`
-    )
-    .replace(/<a href="http/g, `<a target="_blank" rel="noreferrer" href="http`);
-}
-
-export default function BriefOverlay({ markdown, onClose }) {
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+export default function BriefOverlay({ markdown, onClose, onReceiptClick }) {
+  const closeRef = useRef(null);
+  const dialogRef = useRef(null);
+  useModalFocus({ open: true, containerRef: dialogRef, initialRef: closeRef, onClose });
 
   const html = useMemo(() => {
     try {
-      return decorate(marked.parse(markdown || "", { async: false }));
+      return renderBriefMarkdown(markdown);
     } catch {
       return "";
     }
   }, [markdown]);
 
+  function handleArticleClick(event) {
+    const receipt = event.target.closest("[data-receipt]")?.dataset.receipt;
+    if (!receipt) return;
+    event.preventDefault();
+    onReceiptClick?.({ ref: receipt, quote: "" });
+  }
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0a0a0b]/[0.98]">
-      <button
-        onClick={onClose}
-        className="fixed top-5 right-6 z-50 px-2 py-1 text-xl leading-none text-white/40
-                   hover:text-white/80 transition-colors cursor-pointer"
-        title="close (esc)"
-      >
-        ×
-      </button>
-      <article
-        className="brief-md mx-auto max-w-[68ch] px-6 py-16"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+    <div ref={dialogRef} className="brief-reader" role="dialog" aria-modal="true" aria-labelledby="brief-title" tabIndex={-1}>
+      <header className="brief-header">
+        <div>
+          <span>Exploration artifact</span>
+          <strong id="brief-title">Idea brief</strong>
+        </div>
+        <button ref={closeRef} type="button" onClick={onClose}>Back to idea map</button>
+      </header>
+      <div className="brief-scroll">
+        <article
+          className="brief-md"
+          onClick={handleArticleClick}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
     </div>
   );
 }

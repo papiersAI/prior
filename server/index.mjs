@@ -21,7 +21,10 @@ const FIXTURES = {
   tree: path.join(__dirname, "fixtures", "tree-cholesky.jsonl"),
   "tree-synthetic": path.join(__dirname, "fixtures", "tree-synthetic.jsonl"),
 };
-const PORT = 8787;
+const requestedPort = Number(process.env.PORT);
+const PORT = Number.isInteger(requestedPort) && requestedPort >= 1 && requestedPort <= 65_535
+  ? requestedPort
+  : 8787;
 const MOCK = process.env.MOCK === "1";
 
 // ---------------------------------------------------------------- state
@@ -40,6 +43,11 @@ function sseWrite(res, event) {
 
 function broadcast(event) {
   for (const c of clients) sseWrite(c, event);
+}
+
+function broadcastRunError(text, statusText = text) {
+  broadcast({ t: "error", run: "system", text });
+  broadcast({ t: "status", run: "system", text: statusText });
 }
 
 // heartbeat every 15s (SSE comment lines are ignored by EventSource)
@@ -76,7 +84,7 @@ function startMockRun(question, fixture) {
   try {
     events = loadFixture(fixture); // re-read each run so fixture edits need no restart
   } catch (e) {
-    broadcast({ t: "status", run: "system", text: `fixture missing: ${e.message}` });
+    broadcastRunError(`Fixture unavailable: ${e.message}`, `fixture missing: ${e.message}`);
     return;
   }
   playback = { events, i: 0, timer: null, pendingAversion: null };
@@ -138,7 +146,7 @@ function stopEngine() {
 function reportEngineFailure(rec) {
   if (rec.reportedFailure) return;
   rec.reportedFailure = true;
-  broadcast({ t: "status", run: "system", text: "run failed — see server log" });
+  broadcastRunError("Run failed. See the server log for engine output.", "run failed — see server log");
 }
 
 function startEngineRun(question, mode) {
@@ -151,7 +159,7 @@ function startEngineRun(question, mode) {
     fs.writeFileSync(WORKING_PATH, prior);
     broadcast({ t: "prior", markdown: prior });
   } catch (e) {
-    broadcast({ t: "status", run: "system", text: `could not stage prior: ${e.message}` });
+    broadcastRunError(`Could not stage PRIOR.md: ${e.message}`, `could not stage prior: ${e.message}`);
     return;
   }
 

@@ -9,6 +9,7 @@ SSE:    GET /events   → stream; each SSE `data:` is one JSON event:
            receipts?: [{ref:string, quote:string}] } }   // ref e.g. "hl_ffae…" or "§ Agentic search"
   { t:"divergence", value:number }                        // 0..1
   { t:"status", run:"vanilla"|"prior"|"system", text:string }
+  { t:"error", run:"system", text:string }                   // terminal run failure; status may also be emitted for older clients
   { t:"prior", markdown:string }                          // sent on connect + whenever prior changes
   { t:"done", run:"vanilla"|"prior" }
 API:
@@ -53,7 +54,7 @@ Explore streams emit, in addition to `{t:"status"}` / `{t:"prior"}`:
 ```
 
 Scout events from the seed-reading phase also appear early with `run:"prior"`; the UI
-shows them only in the bottom ticker when a tree is on the canvas.
+keeps every emitted event in the inspectable trajectory rail when a tree is on the canvas.
 
 Fixture keys: `?fixture=tree` → `server/fixtures/tree-cholesky.jsonl` (a real recorded
 explore run; if the file is absent, `/api/run` answers 409 with a message saying how to
